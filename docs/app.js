@@ -2064,9 +2064,10 @@ async function init() {
       setAuthLocked(false);
       setStatus('Welcome back.');
     } catch (error) {
-      showToast('Session refresh failed', error.message, 'error');
-      signOutAccount();
-      return;
+      showToast('Session refresh unavailable', 'Using the local account session on this Pages build.', 'error');
+      state.memory = normalizeMemory({});
+      state.apiKeys = [];
+      setAuthLocked(false);
     }
   } else {
     state.apiKeys = [];
