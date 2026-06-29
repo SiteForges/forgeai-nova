@@ -76,7 +76,9 @@ const els = {
   healthOllama: document.querySelector('[data-health-ollama]'),
   healthTavily: document.querySelector('[data-health-tavily]'),
   createApiKeyButton: document.querySelector('[data-create-api-key]'),
+  openBillingTabButton: document.querySelector('[data-open-billing-tab]'),
   apiKeyOutput: document.querySelector('[data-api-key-output]'),
+  apiHero: document.querySelector('[data-api-hero]'),
   apiKeyList: document.querySelector('[data-api-key-list]'),
   memoryProfileForm: document.querySelector('[data-memory-profile-form]'),
   memoryName: document.querySelector('[data-memory-name]'),
@@ -85,6 +87,7 @@ const els = {
   memoryNoteForm: document.querySelector('[data-memory-note-form]'),
   memoryNote: document.querySelector('[data-memory-note]'),
   memoryList: document.querySelector('[data-memory-list]'),
+  billingOverview: document.querySelector('[data-billing-overview]'),
   packGrid: document.querySelector('[data-pack-grid]'),
   toastStack: document.querySelector('[data-toast-stack]'),
 };
@@ -629,9 +632,44 @@ function renderSettingsTabs() {
 }
 
 function renderApiKeys() {
+  const starterTokens = Number.isFinite(state.health?.apiStarterTokens) ? state.health.apiStarterTokens : 100;
+  const walletSummary = !state.account
+    ? `${starterTokens} starter API tokens are ready after sign-in.`
+    : state.account.isUnlimited
+      ? 'Unlimited API token access for this account.'
+      : `${state.account.apiTokensRemaining} of ${state.account.apiTokenLimit} API tokens remaining.`;
+  const routingSummary = state.settings.providerMode === 'ollama'
+    ? 'Requests are set to Ollama only for API and chat responses.'
+    : state.settings.providerMode === 'groq'
+      ? 'Requests are set to Groq only for API and chat responses.'
+      : 'Requests use Groq first and fall back to Ollama automatically.';
+  const liveSummary = state.health?.tavilyConfigured
+    ? 'Live web enrichment is available when Web Mode is enabled.'
+    : 'Live web enrichment is not configured yet.';
+
+  if (els.apiHero) {
+    els.apiHero.innerHTML = `
+      <div class="overview-card accent">
+        <span class="detail-label">API wallet</span>
+        <strong>${escapeHTML(walletSummary)}</strong>
+        <p>Use this wallet for ForgeAI API calls made with your private key.</p>
+      </div>
+      <div class="overview-card">
+        <span class="detail-label">Routing</span>
+        <strong>${escapeHTML(routingSummary)}</strong>
+        <p>Model mode and provider mode carry into the backend API request path.</p>
+      </div>
+      <div class="overview-card">
+        <span class="detail-label">Live data</span>
+        <strong>${escapeHTML(liveSummary)}</strong>
+        <p>When available, Tavily search can feed both Groq and Ollama with fresh context.</p>
+      </div>
+    `;
+  }
+
   const apiSummary = !state.account
-    ? '<div class="list-item"><strong>API starter wallet</strong><p>Sign in to see your 100 starter API tokens and create keys.</p></div>'
-    : `<div class="list-item"><strong>API starter wallet</strong><p>${state.account.isUnlimited ? 'Unlimited API tokens' : `${state.account.apiTokensRemaining} / ${state.account.apiTokenLimit} API tokens remaining`}</p></div>`;
+    ? '<div class="list-item"><strong>Starter wallet</strong><p>Sign in to see your API balance, generate a key, and keep usage tied to your account.</p></div>'
+    : `<div class="list-item"><strong>Starter wallet</strong><p>${state.account.isUnlimited ? 'Unlimited API tokens' : `${state.account.apiTokensRemaining} / ${state.account.apiTokenLimit} API tokens remaining`}</p><p>${state.apiKeys.length ? 'Active keys are listed below.' : 'Create your first key to start calling the ForgeAI API.'}</p></div>`;
   els.apiKeyList.innerHTML = state.apiKeys
     .reduce((markup, key) => {
       return markup + `
@@ -666,12 +704,43 @@ function renderMemory() {
 }
 
 function renderTokenPacks() {
+  if (els.billingOverview) {
+    const chatAllowance = !state.account
+      ? 'Free account: 200 chat tokens every 2 days.'
+      : state.account.isUnlimited
+        ? 'Owner account: unlimited chat and API usage.'
+        : `${getPlanLabel(state.account.plan)} account: ${state.account.tokensRemaining} / ${state.account.tokenLimit} chat tokens remaining.`;
+    const apiAllowance = !state.account
+      ? 'Starter API wallet unlocks after sign-in.'
+      : state.account.isUnlimited
+        ? 'Unlimited API tokens for this account.'
+        : `${state.account.apiTokensRemaining} / ${state.account.apiTokenLimit} API tokens remaining.`;
+
+    els.billingOverview.innerHTML = `
+      <div class="overview-card">
+        <span class="detail-label">Chat allowance</span>
+        <strong>${escapeHTML(chatAllowance)}</strong>
+        <p>Chat usage renews automatically based on your plan.</p>
+      </div>
+      <div class="overview-card accent">
+        <span class="detail-label">API wallet</span>
+        <strong>${escapeHTML(apiAllowance)}</strong>
+        <p>Token packs below add credits for ForgeAI API calls.</p>
+      </div>
+    `;
+  }
+
   els.packGrid.innerHTML = state.tokenPacks
     .map((pack) => {
+      const featured = Number(pack.tokens) >= 800;
       return `
-        <div class="pack-card">
-          <strong>$${pack.amountUsd}</strong>
-          <span>${pack.tokens} API tokens</span>
+        <div class="pack-card ${featured ? 'featured' : ''}">
+          <div class="pack-topline">
+            <span class="pack-price">$${pack.amountUsd}</span>
+            ${featured ? '<span class="pack-badge">Popular</span>' : ''}
+          </div>
+          <strong>${pack.tokens} API tokens</strong>
+          <span>One-time wallet top-up for ForgeAI API usage.</span>
           <a class="secondary-button compact" href="${escapeHTML(pack.paypalUrl)}" target="_blank" rel="noreferrer">
             Buy API tokens
           </a>
@@ -763,7 +832,7 @@ function renderMessages(conversation) {
         ? `
             <div class="message-meta">
               ${message.provider === 'error' ? 'Answered by Error' : `Answered by ${escapeHTML(PROVIDER_BADGES[message.provider || 'standby']?.label || 'ForgeAI')}`}
-              ${message.webUsed ? ' · Live web context used' : ''}
+              ${message.webUsed ? ' | Live web context used' : ''}
             </div>
           `
         : '';
@@ -1363,6 +1432,10 @@ function bindEvents() {
     } catch (error) {
       showToast('API key failed', error.message, 'error');
     }
+  });
+
+  els.openBillingTabButton?.addEventListener('click', () => {
+    openSettings('billing');
   });
 
   els.memoryProfileForm.addEventListener('submit', async (event) => {

@@ -267,6 +267,7 @@
               <div class="settings-card">
                 <h3>API access</h3>
                 <p class="muted-copy">Create a private ForgeAI API key tied to your API wallet. Every account starts with 100 API tokens.</p>
+                <div class="api-hero" data-api-hero></div>
                 <div class="details-grid api-health-grid">
                   <div>
                     <span class="detail-label">Groq</span>
@@ -281,8 +282,9 @@
                     <strong data-health-tavily>Checking...</strong>
                   </div>
                 </div>
-                <div class="inline-actions">
+                <div class="inline-actions api-actions-row">
                   <button class="primary-button compact" type="button" data-create-api-key>Create API key</button>
+                  <button class="secondary-button compact" type="button" data-open-billing-tab>Buy API tokens</button>
                 </div>
                 <div class="api-key-output" data-api-key-output hidden></div>
                 <div class="list-shell" data-api-key-list></div>
@@ -334,6 +336,7 @@
                 <p class="muted-copy">
                   Free accounts renew 200 chat tokens every 2 days. Pro accounts renew 1000 chat tokens every 2 days after manual verification. API token packs below fund the ForgeAI API wallet separately.
                 </p>
+                <div class="billing-overview" data-billing-overview></div>
 
                 <div class="billing-card">
                   <div>
@@ -346,6 +349,10 @@
                   </a>
                 </div>
 
+                <div class="billing-note">
+                  <strong>API token packs</strong>
+                  <p>Pick a pack, complete PayPal, then the purchased credits can be applied to your ForgeAI API wallet after payment verification.</p>
+                </div>
                 <div class="pack-grid" data-pack-grid></div>
               </div>
             </section>
