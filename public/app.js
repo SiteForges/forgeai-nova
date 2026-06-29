@@ -172,6 +172,11 @@ function normalizeAccount(account) {
     tokensRemaining: Number.isFinite(account.tokensRemaining)
       ? account.tokensRemaining
       : Math.max(0, (Number(account.tokenLimit) || 200) - (Number(account.tokensUsed) || 0)),
+    apiTokenLimit: Number.isFinite(account.apiTokenLimit) ? account.apiTokenLimit : 100,
+    apiTokensUsed: Number.isFinite(account.apiTokensUsed) ? account.apiTokensUsed : 0,
+    apiTokensRemaining: Number.isFinite(account.apiTokensRemaining)
+      ? account.apiTokensRemaining
+      : Math.max(0, (Number(account.apiTokenLimit) || 100) - (Number(account.apiTokensUsed) || 0)),
     renewalAt: account.renewalAt || null,
     createdAt: account.createdAt || new Date().toISOString(),
     updatedAt: account.updatedAt || new Date().toISOString(),
@@ -346,6 +351,16 @@ function formatRenewal(account) {
   if (account.isUnlimited) return 'Unlimited owner access.';
   if (!account.renewalAt) return `${getPlanLabel(account.plan)} plan renews every 2 days.`;
   return `${getPlanLabel(account.plan)} renews ${formatShortDate(account.renewalAt)}.`;
+}
+
+function getAvatarColor(seedText) {
+  const palette = ['#4c7cf7', '#2ea37a', '#b66af5', '#d97a34', '#4b93a8', '#bd5d7a', '#8d74e8', '#3d8b63'];
+  const seed = String(seedText || 'forgeai').toUpperCase();
+  let total = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    total += seed.charCodeAt(index) * (index + 1);
+  }
+  return palette[total % palette.length];
 }
 
 function messagePreview(text) {
@@ -551,6 +566,7 @@ function renderAccount() {
     els.accountName.textContent = 'Not signed in';
     els.accountEmail.textContent = 'Choose an account to start.';
     els.accountAvatar.textContent = 'F';
+    els.accountAvatar.style.background = '#4c7cf7';
     els.usageText.textContent = '200 / 200 tokens';
     els.usageFill.style.width = '0%';
     els.usageCaption.textContent = 'Free plan renews every 2 days.';
@@ -572,15 +588,19 @@ function renderAccount() {
   els.accountEmail.textContent =
     state.account.kind === 'guest' ? 'Guest mode on this device' : state.account.email;
   els.accountAvatar.textContent = initials;
+  els.accountAvatar.style.background = getAvatarColor(`${state.account.name}|${state.account.email}`);
 
   const usageText = state.account.isUnlimited
     ? 'Unlimited tokens'
     : `${state.account.tokensRemaining} / ${state.account.tokenLimit} tokens`;
+  const apiUsageText = state.account.isUnlimited
+    ? 'Unlimited API tokens'
+    : `${state.account.apiTokensRemaining} / ${state.account.apiTokenLimit} API tokens`;
   els.usageText.textContent = usageText;
   els.settingsName.textContent = state.account.name;
   els.settingsEmail.textContent = state.account.email;
   els.settingsPlan.textContent = getPlanLabel(state.account.plan);
-  els.settingsUsage.textContent = usageText;
+  els.settingsUsage.textContent = `${usageText} | ${apiUsageText}`;
   els.usageCaption.textContent = formatRenewal(state.account);
 
   const usedRatio = state.account.isUnlimited
@@ -609,17 +629,19 @@ function renderSettingsTabs() {
 }
 
 function renderApiKeys() {
+  const apiSummary = !state.account
+    ? '<div class="list-item"><strong>API starter wallet</strong><p>Sign in to see your 100 starter API tokens and create keys.</p></div>'
+    : `<div class="list-item"><strong>API starter wallet</strong><p>${state.account.isUnlimited ? 'Unlimited API tokens' : `${state.account.apiTokensRemaining} / ${state.account.apiTokenLimit} API tokens remaining`}</p></div>`;
   els.apiKeyList.innerHTML = state.apiKeys
-    .map((key) => {
-      return `
+    .reduce((markup, key) => {
+      return markup + `
         <div class="list-item">
           <strong>${escapeHTML(key.label || 'API key')}</strong>
           <p>Created ${escapeHTML(formatShortDate(key.createdAt))}</p>
           <p>${key.lastUsedAt ? `Last used ${escapeHTML(formatShortDate(key.lastUsedAt))}` : 'Not used yet'}</p>
         </div>
       `;
-    })
-    .join('');
+    }, apiSummary);
 }
 
 function renderMemory() {
@@ -649,9 +671,9 @@ function renderTokenPacks() {
       return `
         <div class="pack-card">
           <strong>$${pack.amountUsd}</strong>
-          <span>${pack.tokens} tokens</span>
+          <span>${pack.tokens} API tokens</span>
           <a class="secondary-button compact" href="${escapeHTML(pack.paypalUrl)}" target="_blank" rel="noreferrer">
-            Buy token pack
+            Buy API tokens
           </a>
         </div>
       `;
@@ -1028,7 +1050,7 @@ async function sendToBackend(message, history) {
   if (STATIC_EXPORT) {
     return {
       reply:
-        'This GitHub Pages build is a static preview of ForgeAI Nova. Run the full Node backend locally or deploy the server to use Groq, Ollama fallback, memory sync, and live AI chat.',
+        'This GitHub Pages build is a static preview of ForgeAI Nova. Run the full Node backend locally or deploy the server to use Groq, Ollama fallback, API token billing, memory sync, and live AI chat.',
       provider: 'error',
       modelUsed: null,
       webUsed: false,

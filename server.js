@@ -23,6 +23,7 @@ const OWNER_EMAILS = new Set(
 
 const DEFAULT_TOKEN_LIMIT = 200;
 const PRO_TOKEN_LIMIT = 1000;
+const DEFAULT_API_TOKEN_LIMIT = 100;
 const BILLING_INTERVAL_MS = 2 * 24 * 60 * 60 * 1000;
 const PAYPAL_ME_URL = 'https://paypal.me/AlexanderBatti/14';
 const PAYPAL_TOKEN_PACKS = [
@@ -82,6 +83,10 @@ function getPlanLimit(plan) {
   const normalizedPlan = normalizePlan(plan);
   if (normalizedPlan === 'owner') return Number.MAX_SAFE_INTEGER;
   return normalizedPlan === 'pro' ? PRO_TOKEN_LIMIT : DEFAULT_TOKEN_LIMIT;
+}
+
+function getApiTokenLimit() {
+  return DEFAULT_API_TOKEN_LIMIT;
 }
 
 function hasGroqKey() {
@@ -322,6 +327,9 @@ function sanitizeAccountRecord(record) {
     tokenLimit: record.tokenLimit,
     tokensUsed: record.tokensUsed,
     tokensRemaining: record.tokensRemaining,
+    apiTokenLimit: record.apiTokenLimit,
+    apiTokensUsed: record.apiTokensUsed,
+    apiTokensRemaining: record.apiTokensRemaining,
     lastResetAt: record.lastResetAt,
     renewalAt: record.renewalAt,
     createdAt: record.createdAt,
@@ -403,6 +411,11 @@ function getOrCreateAccountRecord(accountInput) {
     tokensRemaining: Number.isFinite(existing.tokensRemaining)
       ? existing.tokensRemaining
       : getPlanLimit(existing.plan || 'free'),
+    apiTokenLimit: Number.isFinite(existing.apiTokenLimit) ? existing.apiTokenLimit : getApiTokenLimit(),
+    apiTokensUsed: Number.isFinite(existing.apiTokensUsed) ? existing.apiTokensUsed : 0,
+    apiTokensRemaining: Number.isFinite(existing.apiTokensRemaining)
+      ? existing.apiTokensRemaining
+      : Math.max(0, getApiTokenLimit() - (Number.isFinite(existing.apiTokensUsed) ? existing.apiTokensUsed : 0)),
     lastResetAt: existing.lastResetAt || new Date().toISOString(),
     createdAt: existing.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -444,6 +457,50 @@ function reserveUsage(accountInput, amount) {
   return record;
 }
 
+function reserveApiUsage(accountInput, amount) {
+  const record = getOrCreateAccountRecord(accountInput);
+  applyBillingCycle(record);
+
+  if (record.isUnlimited) {
+    record.apiTokenLimit = Number.MAX_SAFE_INTEGER;
+    record.apiTokensUsed = 0;
+    record.apiTokensRemaining = Number.MAX_SAFE_INTEGER;
+    accountStore.accounts[record.id] = record;
+    writeAccountStore();
+    return record;
+  }
+
+  if (!Number.isFinite(record.apiTokenLimit) || record.apiTokenLimit <= 0) {
+    record.apiTokenLimit = getApiTokenLimit();
+  }
+
+  if (!Number.isFinite(record.apiTokensUsed)) {
+    record.apiTokensUsed = 0;
+  }
+
+  if (!Number.isFinite(record.apiTokensRemaining)) {
+    record.apiTokensRemaining = Math.max(0, record.apiTokenLimit - record.apiTokensUsed);
+  }
+
+  if (record.apiTokensRemaining < amount) {
+    throw createProviderError(
+      'API_USAGE_EXHAUSTED',
+      `This API account has ${record.apiTokensRemaining} API tokens left. Buy more API tokens to continue.`,
+      {
+        account: sanitizeAccountRecord(record),
+        memory: sanitizeMemory(record.memory),
+      }
+    );
+  }
+
+  record.apiTokensUsed += amount;
+  record.apiTokensRemaining = Math.max(0, record.apiTokenLimit - record.apiTokensUsed);
+  record.updatedAt = new Date().toISOString();
+  accountStore.accounts[record.id] = record;
+  writeAccountStore();
+  return record;
+}
+
 function estimateTokenUsage({ message, history, webMode, providerMode, modelMode }) {
   const base = 8;
   const lengthCost = Math.ceil(String(message || '').length / 140);
@@ -458,6 +515,9 @@ function grantPurchasedTokens(accountInput, tokenAmount) {
   const record = getOrCreateAccountRecord(accountInput);
   applyBillingCycle(record);
   if (record.isUnlimited) {
+    record.apiTokenLimit = Number.MAX_SAFE_INTEGER;
+    record.apiTokensUsed = 0;
+    record.apiTokensRemaining = Number.MAX_SAFE_INTEGER;
     accountStore.accounts[record.id] = record;
     writeAccountStore();
     return record;
@@ -468,8 +528,9 @@ function grantPurchasedTokens(accountInput, tokenAmount) {
     throw createProviderError('INVALID_TOKEN_AMOUNT', 'Token grant amount must be greater than zero.');
   }
 
-  record.tokenLimit += tokens;
-  record.tokensRemaining += tokens;
+  record.apiTokenLimit = Math.max(getApiTokenLimit(), Number(record.apiTokenLimit) || getApiTokenLimit());
+  record.apiTokensRemaining = Math.max(0, Number(record.apiTokensRemaining) || 0) + tokens;
+  record.apiTokenLimit = Math.max(record.apiTokenLimit, record.apiTokensUsed + record.apiTokensRemaining);
   record.lastTopUpAt = new Date().toISOString();
   record.updatedAt = record.lastTopUpAt;
   accountStore.accounts[record.id] = record;
@@ -995,12 +1056,13 @@ app.get('/api/health', (req, res) => {
     tokenPacks: PAYPAL_TOKEN_PACKS,
     freeTokenLimit: DEFAULT_TOKEN_LIMIT,
     proTokenLimit: PRO_TOKEN_LIMIT,
+    apiStarterTokens: DEFAULT_API_TOKEN_LIMIT,
   });
 });
 
 app.post('/api/billing/claim', (req, res) => {
   return res.status(403).json({
-    error: 'Self-service upgrades are disabled. Pro access must be granted after manual payment verification.',
+      error: 'Self-service upgrades are disabled. API token credits and Pro access must be granted after manual payment verification.',
   });
 });
 
@@ -1188,19 +1250,50 @@ app.post('/api/v1/chat', async (req, res) => {
       return res.status(400).json({ error: 'Message cannot be empty.' });
     }
 
-    try {
-      const payload = await handleChatRequest({
-        message,
-        history,
-        modelMode,
-        providerMode,
-        webMode,
-        accountInput: accountRecord,
-      });
+    const tavilyConfigured = hasTavilyKey();
+    const liveRequested = webMode || looksLikeLiveQuestion(message);
 
-      return respondWithMessage(res, payload);
+    if (liveRequested && !tavilyConfigured) {
+      return respondWithMessage(res, {
+        reply:
+          'Live web search is not set up yet. Add TAVILY_API_KEY to enable current news, weather, prices, sports, and other real-time answers.',
+        provider: 'error',
+        modelUsed: null,
+        webUsed: false,
+        sources: [],
+        error: true,
+        account: sanitizeAccountRecord(accountRecord),
+        memory: sanitizeMemory(accountRecord.memory),
+      });
+    }
+
+    let webContext = '';
+    let webUsed = false;
+    let sources = [];
+
+    if (liveRequested) {
+      const search = await searchTavily(message);
+      webContext = buildSearchContext(message, search);
+      webUsed = true;
+      sources = search.results.map((result) => ({
+        title: result.title || 'Untitled result',
+        url: result.url || result.raw_url || '',
+      }));
+    }
+
+    const usageCost = estimateTokenUsage({
+      message,
+      history,
+      webMode,
+      providerMode,
+      modelMode,
+    });
+
+    let usageRecord;
+    try {
+      usageRecord = reserveApiUsage(accountRecord, usageCost);
     } catch (error) {
-      if (error?.code === 'USAGE_EXHAUSTED') {
+      if (error?.code === 'API_USAGE_EXHAUSTED') {
         return res.status(402).json({
           error: error.message,
           account: error.account || null,
@@ -1208,6 +1301,42 @@ app.post('/api/v1/chat', async (req, res) => {
         });
       }
       throw error;
+    }
+
+    try {
+      const replyData = await resolveProviderReply({
+        message,
+        history,
+        modelMode,
+        providerMode,
+        webContext,
+        memory: usageRecord.memory,
+      });
+
+      return respondWithMessage(res, {
+        ...replyData,
+        webUsed,
+        sources,
+        error: false,
+        usageCost,
+        account: sanitizeAccountRecord(usageRecord),
+        memory: sanitizeMemory(usageRecord.memory),
+      });
+    } catch (error) {
+      return respondWithMessage(res, {
+        reply: buildFriendlyFailureReply({
+          providerMode,
+          error: error?.ollamaError || error,
+        }),
+        provider: 'error',
+        modelUsed: null,
+        webUsed,
+        sources,
+        error: true,
+        usageCost,
+        account: sanitizeAccountRecord(usageRecord),
+        memory: sanitizeMemory(usageRecord.memory),
+      });
     }
   } catch (error) {
     console.error('ForgeAI API key chat error:', error);
