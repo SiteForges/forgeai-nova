@@ -15,9 +15,12 @@ ForgeAI Nova is a dark, account-based AI chat app built with HTML, CSS, JavaScri
   - Memory
   - Billing
 - Groq-first responses with Ollama local fallback
-- Optional Tavily live search for current answers
+- Admin-only local model manager for Qwen and Gemma downloads/tests
 - Per-account memory for saved profile facts and notes
 - Token usage tracking with free and Pro limits
+- PRO AI account upgrades handled through the backend store
+- Assistant modes for email writing, coding help, prompt building, and general chat
+- Voice-to-text input and live voice call mode with spoken AI replies
 - Copy and regenerate buttons on assistant messages
 
 ## Project structure
@@ -35,9 +38,9 @@ Create `.env` from `.env.example` and add:
 
 ```env
 GROQ_API_KEY=your_groq_api_key_here
-TAVILY_API_KEY=your_tavily_api_key_here_optional
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=qwen3:4b
+OLLAMA_QWEN_36_MODEL=qwen3.6:27b
 GOOGLE_CLIENT_ID=
 OWNER_EMAILS=thisisalexanderbatti@gmail.com
 OWNER_ADMIN_TOKEN=
@@ -46,8 +49,8 @@ OWNER_ADMIN_TOKEN=
 Notes:
 
 - `GROQ_API_KEY` powers the main cloud provider.
-- `TAVILY_API_KEY` is optional and enables live web search.
 - `OLLAMA_BASE_URL` and `OLLAMA_MODEL` are used for local fallback mode.
+- `OLLAMA_QWEN_36_MODEL` is the optional Qwen 3.6 local model used by the premium selector.
 - `GOOGLE_CLIENT_ID` is not required for the current UI.
 - `.env` stays local and is ignored by Git.
 
@@ -77,7 +80,7 @@ Then open:
 ## Usage and plans
 
 - Free plan: `200` tokens, renewed every 2 days
-- Pro plan: `1000` tokens, renewed every 2 days after manual verification
+- Pro plan: `1000` tokens, renewed every 2 days
 - Owner accounts can be unlimited when configured on the backend
 
 ## Memory
@@ -118,6 +121,12 @@ Other modes:
 ollama pull qwen3:4b
 ```
 
+Optional premium local model:
+
+```powershell
+ollama run qwen3.6:27b
+```
+
 4. Start ForgeAI Nova:
 
 ```powershell
@@ -129,20 +138,7 @@ If Groq fails, Auto mode will use Ollama.
 Important:
 
 - Ollama is local and does not need an API key
-- Ollama does not have live web data unless Tavily is connected
 - Bigger models need more RAM and a stronger machine
-
-## Tavily live search
-
-When Web mode is on, ForgeAI Nova can search live web data first for topics like:
-
-- News
-- Weather
-- Prices
-- Sports
-- Current events
-
-If `TAVILY_API_KEY` is missing, the app still works and explains that live web search is not set up yet.
 
 ## API keys
 
@@ -155,12 +151,11 @@ ForgeAI Nova can create account-linked API keys through the Settings -> API sect
 
 `POST /api/v1/chat`
 
-## Billing
+## Donations
 
-- PayPal Pro link: `paypal.me/AlexanderBatti/14`
-- Token pack links are also listed in the Billing section
-- Self-service payment claiming is disabled
-- Pro upgrades and token credits must be manually verified by the owner
+- ForgeAI is free to use
+- Donations are optional and only help support hosting and development
+- No feature unlocks, paywalls, or purchase claims are required
 
 ## Common issues
 
@@ -178,11 +173,6 @@ ForgeAI Nova can create account-linked API keys through the Settings -> API sect
 ```powershell
 ollama list
 ```
-
-### Live web search unavailable
-
-- Add `TAVILY_API_KEY`
-- Turn on Web mode in Settings -> AI
 
 ### Chats mixing between users
 
@@ -204,7 +194,6 @@ Deploy on any Node.js host such as Render, Railway, Fly.io, or a VPS.
 Deployment checklist:
 
 - Add `GROQ_API_KEY`
-- Add `TAVILY_API_KEY` if needed
 - Add `OLLAMA_*` only if your deployment also has local Ollama access
 - Run `npm install`
 - Start with `npm start`

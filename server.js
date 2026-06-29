@@ -4,6 +4,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { execFile } = require('child_process');
 const Groq = require('groq-sdk');
 
 const app = express();
@@ -12,6 +13,7 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const ACCOUNT_STORE_PATH = path.join(__dirname, 'forgeai-accounts.json');
 const OLLAMA_BASE_URL = String(process.env.OLLAMA_BASE_URL || 'http://localhost:11434').replace(/\/+$/, '');
 const OLLAMA_MODEL = String(process.env.OLLAMA_MODEL || 'qwen3:4b').trim();
+const QWEN_36_MODEL = String(process.env.OLLAMA_QWEN_36_MODEL || 'qwen3.6:27b').trim();
 const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || '').trim();
 const OWNER_ADMIN_TOKEN = String(process.env.OWNER_ADMIN_TOKEN || '').trim();
 const OWNER_EMAILS = new Set(
@@ -20,18 +22,61 @@ const OWNER_EMAILS = new Set(
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean)
 );
+const PRO_ACCOUNT_EMAILS = new Set(
+  String(process.env.PRO_ACCOUNT_EMAILS || 'thisisalexanderbatti@gmail.com')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean)
+);
+const SUPPORT_CONTACT = {
+  ownerName: 'ALEXADNER BATTI',
+  supportEmail: 'thisisalexadnerbatti@gmail.com',
+  supportPhone: '6198758774',
+  supportPhoneDisplay: '(619) 875-8774',
+  birthday: 'August 21, 2012',
+};
+const QWEN_SETUP_COMMAND = `ollama run ${QWEN_36_MODEL}`;
+const GEMMA_3_MODEL = 'gemma3:4b';
+const GEMMA_4_MODEL = 'gemma4';
+const ADMIN_MODEL_COMMANDS = new Map([
+  ['qwen3-4b-pull', { args: ['pull', OLLAMA_MODEL], label: 'Download Qwen3 4B' }],
+  ['qwen36-27b-pull', { args: ['pull', QWEN_36_MODEL], label: 'Download Qwen3.6 27B' }],
+  ['gemma3-4b-pull', { args: ['pull', GEMMA_3_MODEL], label: 'Download Gemma3 4B' }],
+  ['gemma4-pull', { args: ['pull', GEMMA_4_MODEL], label: 'Download Gemma4' }],
+  ['qwen3-4b-run', { args: ['run', OLLAMA_MODEL], label: 'Test Qwen3 4B' }],
+  ['qwen36-27b-run', { args: ['run', QWEN_36_MODEL], label: 'Test Qwen3.6 27B' }],
+  ['gemma3-4b-run', { args: ['run', GEMMA_3_MODEL], label: 'Test Gemma3 4B' }],
+  ['gemma4-run', { args: ['run', GEMMA_4_MODEL], label: 'Test Gemma4' }],
+  ['qwen3-4b-rm', { args: ['rm', OLLAMA_MODEL], label: 'Remove Qwen3 4B' }],
+  ['qwen36-27b-rm', { args: ['rm', QWEN_36_MODEL], label: 'Remove Qwen3.6 27B' }],
+  ['gemma3-4b-rm', { args: ['rm', GEMMA_3_MODEL], label: 'Remove Gemma3 4B' }],
+  ['gemma4-rm', { args: ['rm', GEMMA_4_MODEL], label: 'Remove Gemma4' }],
+]);
+const MANAGED_OLLAMA_MODELS = [
+  { key: 'qwen3-4b', label: 'Qwen3 4B', model: OLLAMA_MODEL, pullCommand: `ollama pull ${OLLAMA_MODEL}`, runCommand: `ollama run ${OLLAMA_MODEL}` },
+  { key: 'qwen36-27b', label: 'Qwen3.6 27B', model: QWEN_36_MODEL, pullCommand: `ollama pull ${QWEN_36_MODEL}`, runCommand: `ollama run ${QWEN_36_MODEL}` },
+  { key: 'gemma3-4b', label: 'Gemma3 4B', model: GEMMA_3_MODEL, pullCommand: `ollama pull ${GEMMA_3_MODEL}`, runCommand: `ollama run ${GEMMA_3_MODEL}` },
+  { key: 'gemma4', label: 'Gemma4', model: GEMMA_4_MODEL, pullCommand: `ollama pull ${GEMMA_4_MODEL}`, runCommand: `ollama run ${GEMMA_4_MODEL}` },
+];
+const LOCAL_MODEL_BY_PREFERENCE = {
+  qwen36: { model: QWEN_36_MODEL, label: 'Qwen3.6 27B' },
+  fallback: { model: OLLAMA_MODEL, label: 'Qwen3 4B' },
+  gemma4: { model: GEMMA_4_MODEL, label: 'Gemma4' },
+  gemma3: { model: GEMMA_3_MODEL, label: 'Gemma3 4B' },
+};
 
-const DEFAULT_TOKEN_LIMIT = 200;
+const DEFAULT_TOKEN_LIMIT = 1000;
 const PRO_TOKEN_LIMIT = 1000;
 const DEFAULT_API_TOKEN_LIMIT = 100;
 const BILLING_INTERVAL_MS = 2 * 24 * 60 * 60 * 1000;
-const PAYPAL_ME_URL = 'https://paypal.me/AlexanderBatti/14';
-const PAYPAL_TOKEN_PACKS = [
-  { code: 'pack_200', tokens: 200, amountUsd: 5, paypalUrl: 'https://paypal.me/AlexanderBatti/5' },
-  { code: 'pack_400', tokens: 400, amountUsd: 10, paypalUrl: 'https://paypal.me/AlexanderBatti/10' },
-  { code: 'pack_800', tokens: 800, amountUsd: 15, paypalUrl: 'https://paypal.me/AlexanderBatti/15' },
-  { code: 'pack_1200', tokens: 1200, amountUsd: 20, paypalUrl: 'https://paypal.me/AlexanderBatti/20' },
-  { code: 'pack_200000', tokens: 200000, amountUsd: 2000, paypalUrl: 'https://paypal.me/AlexanderBatti/2000' },
+const PENDING_ACCESS_WINDOW_MS = 24 * 60 * 60 * 1000;
+const DONATION_URL = 'https://paypal.me/AlexanderBatti/14';
+const DONATION_LINKS = [
+  { code: 'support_200', tokens: 200, amountUsd: 5, donationUrl: 'https://paypal.me/AlexanderBatti/5' },
+  { code: 'support_400', tokens: 400, amountUsd: 10, donationUrl: 'https://paypal.me/AlexanderBatti/10' },
+  { code: 'support_800', tokens: 800, amountUsd: 15, donationUrl: 'https://paypal.me/AlexanderBatti/15' },
+  { code: 'support_1200', tokens: 1200, amountUsd: 20, donationUrl: 'https://paypal.me/AlexanderBatti/20' },
+  { code: 'support_200000', tokens: 200000, amountUsd: 2000, donationUrl: 'https://paypal.me/AlexanderBatti/2000' },
 ];
 
 const MODEL_PRESETS = {
@@ -52,9 +97,6 @@ const MODEL_PRESETS = {
   },
 };
 
-const LIVE_QUERY_REGEX =
-  /\b(today|now|current|latest|news|weather|temperature|forecast|price|prices|stock|stocks|sports|score|scores|game|games|match|earnings|release date|breaking|headline|headlines|updates|what happened|who won|how much is)\b/i;
-
 app.disable('x-powered-by');
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(PUBLIC_DIR));
@@ -74,6 +116,18 @@ function normalizeProviderMode(mode) {
   return ['auto', 'groq', 'ollama'].includes(mode) ? mode : 'auto';
 }
 
+function normalizeAssistantMode(mode) {
+  return ['general', 'email', 'code', 'prompt'].includes(mode) ? mode : 'general';
+}
+
+function normalizeLocalModelPreference(mode) {
+  return ['default', 'qwen36', 'fallback', 'gemma4', 'gemma3'].includes(mode) ? mode : 'default';
+}
+
+function buildOllamaRunCommand(model) {
+  return `ollama run ${String(model || '').trim()}`;
+}
+
 function normalizePlan(plan) {
   if (plan === 'owner') return 'owner';
   return plan === 'pro' ? 'pro' : 'free';
@@ -91,14 +145,6 @@ function getApiTokenLimit() {
 
 function hasGroqKey() {
   return Boolean(String(process.env.GROQ_API_KEY || '').trim());
-}
-
-function hasTavilyKey() {
-  const tavilyKey = String(process.env.TAVILY_API_KEY || '').trim();
-  const groqKey = String(process.env.GROQ_API_KEY || '').trim();
-  if (!tavilyKey) return false;
-  if (groqKey && tavilyKey === groqKey) return false;
-  return true;
 }
 
 function buildAccountId(kind, email, fallbackId = '') {
@@ -248,7 +294,38 @@ function isOwnerIdentity(account) {
   );
 }
 
+function isProIdentity(account) {
+  return Boolean(
+    account &&
+    PRO_ACCOUNT_EMAILS.has(String(account.email || '').trim().toLowerCase())
+  );
+}
+
 function applyBillingCycle(record, now = Date.now()) {
+  if (record.pendingAccess && typeof record.pendingAccess === 'object') {
+    const pendingUntil = Date.parse(record.pendingAccess.pendingUntil || '');
+    const isVerified = record.pendingAccess.status === 'verified';
+    if (!isVerified && Number.isFinite(pendingUntil) && pendingUntil <= now) {
+      record.plan = normalizePlan(record.pendingAccess.previousPlan || 'free');
+      record.role = record.pendingAccess.previousRole === 'owner' ? 'owner' : 'member';
+      record.isUnlimited = Boolean(record.pendingAccess.previousIsUnlimited);
+      record.tokenLimit = Number.isFinite(record.pendingAccess.previousTokenLimit)
+        ? record.pendingAccess.previousTokenLimit
+        : getPlanLimit(record.plan);
+      record.apiTokenLimit = Number.isFinite(record.pendingAccess.previousApiTokenLimit)
+        ? record.pendingAccess.previousApiTokenLimit
+        : getApiTokenLimit();
+      record.apiTokensRemaining = Number.isFinite(record.pendingAccess.previousApiTokensRemaining)
+        ? record.pendingAccess.previousApiTokensRemaining
+        : record.apiTokensRemaining;
+      record.pendingAccess = {
+        ...record.pendingAccess,
+        status: 'revoked',
+        revokedAt: new Date().toISOString(),
+      };
+    }
+  }
+
   if (isOwnerIdentity(record)) {
     record.plan = 'owner';
     record.role = 'owner';
@@ -261,7 +338,7 @@ function applyBillingCycle(record, now = Date.now()) {
     return record;
   }
 
-  const plan = normalizePlan(record.plan);
+  const plan = isProIdentity(record) ? 'pro' : normalizePlan(record.plan);
   const limit = getPlanLimit(plan);
   const lastResetAt = record.lastResetAt ? Date.parse(record.lastResetAt) : NaN;
   const shouldReset =
@@ -324,6 +401,7 @@ function sanitizeAccountRecord(record) {
     role: record.role || (isOwnerIdentity(record) ? 'owner' : 'member'),
     isUnlimited: Boolean(record.isUnlimited),
     plan: normalizePlan(record.plan),
+    planLabel: isOwnerIdentity(record) ? 'Owner' : normalizePlan(record.plan) === 'pro' ? 'PRO AI' : 'Free',
     tokenLimit: record.tokenLimit,
     tokensUsed: record.tokensUsed,
     tokensRemaining: record.tokensRemaining,
@@ -365,6 +443,34 @@ function requireOwnerAdmin(req) {
   }
 }
 
+function canAccessAdminTools(account) {
+  const normalizedEmail = String(account?.email || '').trim().toLowerCase();
+  return Boolean(account && (account.role === 'owner' || OWNER_EMAILS.has(normalizedEmail)));
+}
+
+function runCommand(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { windowsHide: true, ...options }, (error, stdout, stderr) => {
+      if (error) {
+        reject(createProviderError('OLLAMA_COMMAND_FAILED', stderr || error.message, { stdout, stderr }));
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+  });
+}
+
+async function ensureAdminAccount(req) {
+  const account = normalizeAccountInput(req.body?.account);
+  if (!account || !canAccessAdminTools(account)) {
+    throw createProviderError('OWNER_ADMIN_REQUIRED', 'Admin account required.');
+  }
+  if (OWNER_ADMIN_TOKEN) {
+    requireOwnerAdmin(req);
+  }
+  return account;
+}
+
 function readAccountStore() {
   try {
     const raw = fs.readFileSync(ACCOUNT_STORE_PATH, 'utf8');
@@ -384,6 +490,34 @@ function readAccountStore() {
 }
 
 let accountStore = readAccountStore();
+
+function applyEntitlementsToStoredAccounts() {
+  let changed = false;
+  Object.values(accountStore.accounts || {}).forEach((record) => {
+    if (!record || typeof record !== 'object') return;
+    const beforePlan = record.plan;
+    const beforeRole = record.role;
+    const beforeLimit = record.tokenLimit;
+    const beforeRemaining = record.tokensRemaining;
+    applyBillingCycle(record);
+    if (
+      beforePlan !== record.plan ||
+      beforeRole !== record.role ||
+      beforeLimit !== record.tokenLimit ||
+      beforeRemaining !== record.tokensRemaining
+    ) {
+      record.updatedAt = new Date().toISOString();
+      accountStore.accounts[record.id] = record;
+      changed = true;
+    }
+  });
+
+  if (changed) {
+    writeAccountStore();
+  }
+}
+
+applyEntitlementsToStoredAccounts();
 
 function writeAccountStore() {
   const tempPath = `${ACCOUNT_STORE_PATH}.tmp`;
@@ -501,14 +635,28 @@ function reserveApiUsage(accountInput, amount) {
   return record;
 }
 
-function estimateTokenUsage({ message, history, webMode, providerMode, modelMode }) {
+function estimateTokenUsage({ message, history, providerMode, modelMode, assistantMode, localModelPreference }) {
   const base = 8;
   const lengthCost = Math.ceil(String(message || '').length / 140);
   const historyCost = Math.min(6, Math.ceil((Array.isArray(history) ? history.length : 0) / 3));
   const providerCost = providerMode === 'ollama' ? 0 : providerMode === 'groq' ? 3 : 2;
   const modeCost = modelMode === 'creative' ? 8 : modelMode === 'smart' ? 4 : 0;
-  const webCost = webMode ? 4 : 0;
-  return Math.max(10, Math.min(30, base + lengthCost + historyCost + providerCost + modeCost + webCost));
+  const assistantCost =
+    assistantMode === 'code' ? 4 : assistantMode === 'prompt' ? 3 : assistantMode === 'email' ? 2 : 0;
+  const localModelCost =
+    localModelPreference === 'qwen36'
+      ? 5
+      : localModelPreference === 'gemma4'
+        ? 3
+        : localModelPreference === 'gemma3'
+          ? 1
+          : localModelPreference === 'fallback'
+            ? 1
+            : 0;
+  return Math.max(
+    10,
+    Math.min(36, base + lengthCost + historyCost + providerCost + modeCost + assistantCost + localModelCost)
+  );
 }
 
 function grantPurchasedTokens(accountInput, tokenAmount) {
@@ -534,6 +682,90 @@ function grantPurchasedTokens(accountInput, tokenAmount) {
   record.lastTopUpAt = new Date().toISOString();
   record.updatedAt = record.lastTopUpAt;
   accountStore.accounts[record.id] = record;
+  writeAccountStore();
+  return record;
+}
+
+function queuePendingPurchase(accountInput, purchaseInput) {
+  const record = getOrCreateAccountRecord(accountInput);
+  const requestedPlan = normalizePlan(purchaseInput?.plan);
+  const requestedTokens = Math.max(0, Number(purchaseInput?.tokens) || 0);
+  const requestedAmount = Math.max(0, Number(purchaseInput?.amountUsd) || 0);
+  const requestedType = requestedPlan === 'pro' ? 'plan' : 'tokens';
+  const now = new Date();
+  const pendingUntil = new Date(now.getTime() + PENDING_ACCESS_WINDOW_MS).toISOString();
+
+  if (requestedType === 'plan') {
+    const alreadyPro = record.plan === 'pro' || record.pendingAccess?.status === 'pending' || isProIdentity(record);
+    if (alreadyPro) {
+      throw createProviderError('ALREADY_OWNED', 'You already have PRO AI on this account.');
+    }
+  }
+
+  const pendingAccess = {
+    id: `pending_${crypto.randomUUID()}`,
+    type: requestedType,
+    status: 'pending',
+    plan: requestedPlan,
+    tokens: requestedTokens,
+    amountUsd: requestedAmount,
+    requestedAt: now.toISOString(),
+    pendingUntil,
+    previousPlan: record.plan,
+    previousRole: record.role,
+    previousIsUnlimited: record.isUnlimited,
+    previousTokenLimit: record.tokenLimit,
+    previousApiTokenLimit: record.apiTokenLimit,
+    previousApiTokensRemaining: record.apiTokensRemaining,
+  };
+
+  if (requestedType === 'plan') {
+    record.plan = 'pro';
+    record.role = isOwnerIdentity(record) ? 'owner' : 'member';
+    record.isUnlimited = false;
+    record.tokenLimit = PRO_TOKEN_LIMIT;
+    record.tokensRemaining = Math.max(record.tokensRemaining, PRO_TOKEN_LIMIT);
+  } else if (requestedTokens > 0) {
+    record.apiTokenLimit = Math.max(getApiTokenLimit(), record.apiTokenLimit || getApiTokenLimit());
+    record.apiTokensRemaining = Math.max(0, record.apiTokensRemaining) + requestedTokens;
+  }
+
+  record.pendingAccess = pendingAccess;
+  record.updatedAt = now.toISOString();
+  accountStore.accounts[record.id] = record;
+  accountStore.paymentRequests = Array.isArray(accountStore.paymentRequests) ? accountStore.paymentRequests : [];
+  accountStore.paymentRequests.unshift({
+    id: pendingAccess.id,
+    accountId: record.id,
+    name: record.name,
+    email: record.email,
+    plan: requestedPlan,
+    tokens: requestedTokens,
+    amountUsd: requestedAmount,
+    status: 'pending',
+    requestedAt: pendingAccess.requestedAt,
+    pendingUntil,
+  });
+  accountStore.paymentRequests = accountStore.paymentRequests.slice(0, 500);
+  writeAccountStore();
+  return record;
+}
+
+function verifyPendingPurchase(accountInput, requestId) {
+  const record = getOrCreateAccountRecord(accountInput);
+  if (!record.pendingAccess || record.pendingAccess.id !== requestId) {
+    throw createProviderError('PENDING_PURCHASE_NOT_FOUND', 'Pending purchase not found for this account.');
+  }
+  record.pendingAccess = {
+    ...record.pendingAccess,
+    status: 'verified',
+    verifiedAt: new Date().toISOString(),
+  };
+  record.updatedAt = new Date().toISOString();
+  accountStore.accounts[record.id] = record;
+  accountStore.paymentRequests = (accountStore.paymentRequests || []).map((request) =>
+    request.id === requestId ? { ...request, status: 'verified', verifiedAt: new Date().toISOString() } : request
+  );
   writeAccountStore();
   return record;
 }
@@ -629,27 +861,38 @@ function normalizeHistory(history) {
     .slice(-24);
 }
 
-function looksLikeLiveQuestion(text) {
-  return LIVE_QUERY_REGEX.test(String(text || ''));
-}
+function buildSystemPrompt({ liveContextAvailable, assistantMode }) {
+  const mode = normalizeAssistantMode(assistantMode);
+  const modeInstruction =
+    mode === 'email'
+      ? 'You are in Write Email mode. Help write, rewrite, shorten, polish, and professionalize emails with clear subject lines, tone options, and concise business-ready drafts.'
+      : mode === 'code'
+        ? 'You are in Code Helper mode. Prioritize code quality, debugging clarity, implementation details, safe edits, and practical next steps.'
+        : mode === 'prompt'
+          ? 'You are in Prompt Builder mode. Create strong, structured prompts for apps, websites, coding tools, image generation, and AI assistants. Offer copy-paste ready prompts.'
+          : 'You are in General Chat mode. Be helpful, warm, and broadly capable.';
 
-function buildSystemPrompt({ liveContextAvailable }) {
   return [
     'You are ForgeAI Nova, a premium, calm, capable AI assistant.',
+    modeInstruction,
     'Write clearly, naturally, and helpfully.',
     'Keep responses concise unless the user asks for more detail.',
     'When the user asks for code, provide practical code and brief setup notes when useful.',
+    `For support requests, share this contact info exactly: ${SUPPORT_CONTACT.ownerName}, email ${SUPPORT_CONTACT.supportEmail}, phone ${SUPPORT_CONTACT.supportPhoneDisplay}.`,
     liveContextAvailable
-      ? 'You have fresh search results available. Prefer those over general memory for current information.'
-      : 'Live web data is unavailable right now, so do not invent current facts.',
+      ? 'You have fresh context available. Prefer it over general memory for current information.'
+      : 'Use only the provided conversation and memory. Do not invent missing facts.',
   ].join(' ');
 }
 
-function buildProviderMessages({ message, history, webContext, memory }) {
+function buildProviderMessages({ message, history, webContext, memory, assistantMode }) {
   const messages = [
     {
       role: 'system',
-      content: buildSystemPrompt({ liveContextAvailable: Boolean(webContext) }),
+      content: buildSystemPrompt({
+        liveContextAvailable: Boolean(webContext),
+        assistantMode,
+      }),
     },
   ];
 
@@ -667,7 +910,7 @@ function buildProviderMessages({ message, history, webContext, memory }) {
     messages.push({
       role: 'system',
       content:
-        'Fresh live web context for the next answer. Use it carefully and do not invent facts beyond the evidence below.\n\n' +
+        'Additional context for the next answer. Use it carefully and do not invent facts beyond the evidence below.\n\n' +
         webContext,
     });
   }
@@ -680,54 +923,123 @@ function buildProviderMessages({ message, history, webContext, memory }) {
   return messages;
 }
 
-async function searchTavily(query) {
-  const response = await fetch('https://api.tavily.com/search', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      api_key: process.env.TAVILY_API_KEY,
-      query,
-      search_depth: 'advanced',
-      max_results: 5,
-      include_answer: true,
-      include_raw_content: false,
-    }),
-    signal: AbortSignal.timeout(30000),
-  });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    throw createProviderError('TAVILY_FAILED', `Tavily search failed (${response.status}): ${text || response.statusText}`);
+async function inspectOllamaCatalog() {
+  try {
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) {
+      return {
+        reachable: false,
+        installedModels: [],
+        qwen36Available: false,
+        fallbackAvailable: false,
+      };
+    }
+    const data = await response.json();
+    const installedModels = Array.isArray(data.models)
+      ? data.models.map((model) => String(model.name || '').trim()).filter(Boolean)
+      : [];
+    return {
+      reachable: true,
+      installedModels,
+      qwen36Available: installedModels.includes(QWEN_36_MODEL),
+      fallbackAvailable: installedModels.includes(OLLAMA_MODEL),
+    };
+  } catch {
+    return {
+      reachable: false,
+      installedModels: [],
+      qwen36Available: false,
+      fallbackAvailable: false,
+    };
   }
-
-  const data = await response.json();
-  return {
-    answer: typeof data.answer === 'string' ? data.answer.trim() : '',
-    results: Array.isArray(data.results) ? data.results : [],
-  };
 }
 
-function buildSearchContext(query, search) {
-  const lines = [`Search query: ${query}`];
-
-  if (search.answer) {
-    lines.push(`Tavily summary: ${trimText(search.answer, 500)}`);
+async function isOllamaInstalledAndReachable() {
+  try {
+    await runCommand('ollama', ['list'], { timeout: 12000 });
+    return true;
+  } catch {
+    return false;
   }
+}
 
-  if (search.results.length > 0) {
-    lines.push('Top results:');
+function parseOllamaList(stdout) {
+  return String(stdout || '')
+    .split(/\r?\n/)
+    .slice(1)
+    .map((line) => line.trim().split(/\s+/)[0])
+    .filter(Boolean);
+}
+
+async function readModelInventory() {
+  try {
+    const { stdout } = await runCommand('ollama', ['list'], { timeout: 12000 });
+    const installedModels = parseOllamaList(stdout);
+    return {
+      installed: true,
+      running: true,
+      installedModels,
+      models: MANAGED_OLLAMA_MODELS.map((item) => ({
+        ...item,
+        installed: installedModels.includes(item.model),
+      })),
+    };
+  } catch (error) {
+    return {
+      installed: false,
+      running: false,
+      installedModels: [],
+      models: MANAGED_OLLAMA_MODELS.map((item) => ({
+        ...item,
+        installed: false,
+      })),
+      error: error?.message || 'Ollama is missing or offline.',
+    };
   }
+}
 
-  search.results.forEach((result, index) => {
-    const title = trimText(result.title || `Result ${index + 1}`, 120);
-    const content = trimText(result.content || result.snippet || '', 240);
-    const url = result.url || result.raw_url || '';
-    lines.push(`${index + 1}. ${title}${content ? ` - ${content}` : ''}${url ? ` (${url})` : ''}`);
-  });
+async function executeAllowedOllamaCommand(actionKey) {
+  const command = ADMIN_MODEL_COMMANDS.get(actionKey);
+  if (!command) {
+    throw createProviderError('COMMAND_NOT_ALLOWED', 'That model action is not allowed.');
+  }
+  if (command.args[0] === 'run') {
+    const model = command.args[1];
+    const inventory = await readModelInventory();
+    const installed = Array.isArray(inventory.installedModels) && inventory.installedModels.includes(model);
+    if (!installed) {
+      throw createProviderError(
+        'OLLAMA_MODEL_MISSING',
+        `${command.label} is not installed locally. Run "${buildOllamaRunCommand(model)}" in PowerShell, then refresh and click Check Installed Models.`,
+        { requestedModel: model, setupCommand: buildOllamaRunCommand(model), preferredLabel: command.label }
+      );
+    }
 
-  return lines.join('\n').slice(0, 4500);
+    try {
+      await runCommand('ollama', ['show', model], { timeout: 5000 });
+    } catch {
+      // The model is installed; if the local CLI is slow, fall back to the status message below.
+    }
+
+    return {
+      actionKey,
+      label: command.label,
+      reply: `${command.label} is installed locally and ready to use.`,
+      provider: 'ollama',
+      modelUsed: model,
+      mode: 'test',
+    };
+  }
+  const result = await runCommand('ollama', command.args, { timeout: 180000 });
+  return {
+    actionKey,
+    label: command.label,
+    mode: command.args[0],
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
 }
 
 async function generateGroqReply({ providerMessages, modelMode }) {
@@ -770,12 +1082,15 @@ async function generateGroqReply({ providerMessages, modelMode }) {
   throw lastError || createProviderError('GROQ_UNAVAILABLE', 'Groq is unavailable right now.');
 }
 
-async function generateOllamaReply({ providerMessages }) {
+async function generateOllamaReply({ providerMessages, model = OLLAMA_MODEL, preferredLabel = 'local model', numPredict = null }) {
   const payload = {
-    model: OLLAMA_MODEL,
+    model,
     messages: providerMessages,
     stream: false,
   };
+  if (Number.isFinite(numPredict) && numPredict > 0) {
+    payload.options = { num_predict: numPredict };
+  }
 
   let response;
   try {
@@ -791,24 +1106,50 @@ async function generateOllamaReply({ providerMessages }) {
     throw createProviderError(
       'OLLAMA_UNAVAILABLE',
       'Groq is unavailable, and Ollama is not running. Start Ollama or add a working Groq API key.',
-      { cause: error }
+      { cause: error, requestedModel: model, preferredLabel }
     );
   }
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    if ([404, 500, 502, 503].includes(response.status)) {
+    if (response.status === 404 && model === QWEN_36_MODEL) {
+      throw createProviderError(
+        'OLLAMA_MODEL_MISSING',
+        `${preferredLabel || 'The selected model'} is not installed locally. Run "${buildOllamaRunCommand(model)}" in PowerShell, then try again.`,
+        {
+          status: response.status,
+          body: text,
+          requestedModel: model,
+          setupCommand: buildOllamaRunCommand(model),
+          preferredLabel,
+        }
+      );
+    }
+    if (response.status === 404) {
+      throw createProviderError(
+        'OLLAMA_MODEL_MISSING',
+        `${preferredLabel || 'The selected model'} is not installed locally. Run "${buildOllamaRunCommand(model)}" in PowerShell, then try again.`,
+        {
+          status: response.status,
+          body: text,
+          requestedModel: model,
+          setupCommand: buildOllamaRunCommand(model),
+          preferredLabel,
+        }
+      );
+    }
+    if ([500, 502, 503].includes(response.status)) {
       throw createProviderError(
         'OLLAMA_UNAVAILABLE',
         'Groq is unavailable, and Ollama is not running. Start Ollama or add a working Groq API key.',
-        { status: response.status, body: text }
+        { status: response.status, body: text, requestedModel: model, preferredLabel }
       );
     }
 
     throw createProviderError(
       'OLLAMA_FAILED',
       `Ollama returned an error (${response.status}): ${text || response.statusText}`,
-      { status: response.status }
+      { status: response.status, requestedModel: model, preferredLabel }
     );
   }
 
@@ -821,11 +1162,14 @@ async function generateOllamaReply({ providerMessages }) {
   return {
     reply,
     provider: 'ollama',
-    modelUsed: OLLAMA_MODEL,
+    modelUsed: model,
   };
 }
 
 function buildFriendlyFailureReply({ providerMode, error }) {
+  if (error?.code === 'OLLAMA_MODEL_MISSING') {
+    return `Qwen 3.6 is not installed locally yet. Run "${error.setupCommand || QWEN_SETUP_COMMAND}" in PowerShell, or switch back to the default model.`;
+  }
   if (providerMode === 'groq') {
     if (error?.code === 'GROQ_MISSING_KEY') {
       return 'Groq Only mode is selected, but GROQ_API_KEY is missing. Add a working Groq API key or switch provider modes.';
@@ -847,34 +1191,84 @@ function buildFriendlyFailureReply({ providerMode, error }) {
   return 'ForgeAI could not generate a response right now. Try again in a moment.';
 }
 
-async function resolveProviderReply({ message, history, modelMode, providerMode, webContext, memory }) {
+async function resolveProviderReply({
+  message,
+  history,
+  modelMode,
+  providerMode,
+  webContext,
+  memory,
+  assistantMode,
+  localModelPreference,
+}) {
   const providerMessages = buildProviderMessages({
     message,
     history,
     webContext,
     memory,
+    assistantMode,
   });
+  const localPreference = normalizeLocalModelPreference(localModelPreference);
+  const runPreferredLocalModel = async (preference) => {
+    const entry = LOCAL_MODEL_BY_PREFERENCE[preference];
+    if (!entry) return null;
+    return generateOllamaReply({ providerMessages, model: entry.model, preferredLabel: entry.label });
+  };
+  const tryDefaultAuto = async () => {
+    try {
+      return await generateGroqReply({ providerMessages, modelMode });
+    } catch (groqError) {
+      const autoLocalOrder = ['qwen36', 'gemma4', 'fallback', 'gemma3'];
+      let lastLocalError = null;
+      for (const preference of autoLocalOrder) {
+        try {
+          const reply = await runPreferredLocalModel(preference);
+          if (reply) return reply;
+        } catch (error) {
+          lastLocalError = error;
+        }
+      }
+      throw createProviderError('AUTO_FAILED', buildFriendlyFailureReply({ providerMode, error: lastLocalError }), {
+        groqError,
+        ollamaError: lastLocalError,
+      });
+    }
+  };
 
   if (providerMode === 'groq') {
     return generateGroqReply({ providerMessages, modelMode });
   }
 
   if (providerMode === 'ollama') {
-    return generateOllamaReply({ providerMessages });
+    if (localPreference !== 'default') {
+      try {
+        const preferredReply = await runPreferredLocalModel(localPreference);
+        if (preferredReply) return preferredReply;
+      } catch (preferredError) {
+        if (preferredError?.code !== 'OLLAMA_MODEL_MISSING' || localPreference === 'fallback') {
+          throw preferredError;
+        }
+      }
+    }
+    return generateOllamaReply({
+      providerMessages,
+      model: OLLAMA_MODEL,
+      preferredLabel: localPreference === 'fallback' ? 'Qwen3 4B' : 'Default AI',
+    });
   }
 
-  try {
-    return await generateGroqReply({ providerMessages, modelMode });
-  } catch (groqError) {
+  if (localPreference !== 'default') {
     try {
-      return await generateOllamaReply({ providerMessages });
-    } catch (ollamaError) {
-      throw createProviderError('AUTO_FAILED', buildFriendlyFailureReply({ providerMode, error: ollamaError }), {
-        groqError,
-        ollamaError,
-      });
+      const preferredReply = await runPreferredLocalModel(localPreference);
+      if (preferredReply) return preferredReply;
+    } catch (preferredError) {
+      if (preferredError?.code !== 'OLLAMA_MODEL_MISSING') {
+        throw preferredError;
+      }
     }
   }
+
+  return tryDefaultAuto();
 }
 
 function respondWithMessage(res, payload) {
@@ -888,6 +1282,7 @@ function respondWithMessage(res, payload) {
     usageCost: Number.isFinite(payload.usageCost) ? payload.usageCost : null,
     account: payload.account || null,
     memory: payload.memory || null,
+    support: SUPPORT_CONTACT,
   });
 }
 
@@ -982,7 +1377,7 @@ app.post('/api/memory', (req, res) => {
 });
 
 app.get('/api/developer/packs', (req, res) => {
-  res.json({ packs: PAYPAL_TOKEN_PACKS });
+  res.json({ donationLinks: DONATION_LINKS });
 });
 
 app.get('/api/developer/keys', (req, res) => {
@@ -1044,26 +1439,128 @@ app.post('/api/auth/google', async (req, res) => {
   }
 });
 
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
+  const ollamaCatalog = await inspectOllamaCatalog();
+  const modelInventory = await readModelInventory();
   res.json({
     ok: true,
     groqConfigured: hasGroqKey(),
-    tavilyConfigured: hasTavilyKey(),
     googleConfigured: Boolean(GOOGLE_CLIENT_ID),
     ollamaBaseUrl: OLLAMA_BASE_URL,
     ollamaModel: OLLAMA_MODEL,
-    paypalUrl: PAYPAL_ME_URL,
-    tokenPacks: PAYPAL_TOKEN_PACKS,
+    qwen36Model: QWEN_36_MODEL,
+    qwen36Available: ollamaCatalog.qwen36Available,
+    fallbackModelAvailable: ollamaCatalog.fallbackAvailable,
+    ollamaReachable: ollamaCatalog.reachable,
+    ollamaInstalled: modelInventory.installed,
+    ollamaRunning: modelInventory.running,
+    installedModels: modelInventory.installedModels,
+    managedModels: modelInventory.models,
+    support: SUPPORT_CONTACT,
+    qwenSetupCommand: QWEN_SETUP_COMMAND,
+    gemmaSetupCommands: {
+      gemma3: 'ollama pull gemma3:4b',
+      gemma4: 'ollama pull gemma4',
+    },
+    donationUrl: DONATION_URL,
+    donationLinks: DONATION_LINKS,
     freeTokenLimit: DEFAULT_TOKEN_LIMIT,
     proTokenLimit: PRO_TOKEN_LIMIT,
     apiStarterTokens: DEFAULT_API_TOKEN_LIMIT,
   });
 });
 
-app.post('/api/billing/claim', (req, res) => {
-  return res.status(403).json({
-      error: 'Self-service upgrades are disabled. API token credits and Pro access must be granted after manual payment verification.',
-  });
+app.get('/api/admin/models', async (req, res) => {
+  try {
+    const account = normalizeAccountInput({
+      id: req.query.accountId,
+      name: req.query.name,
+      email: req.query.email,
+      kind: req.query.kind,
+    });
+    if (!canAccessAdminTools(account)) {
+      return res.status(403).json({ error: 'Admin account required.' });
+    }
+    const inventory = await readModelInventory();
+    return res.json({
+      ok: true,
+      inventory,
+      adminCommands: MANAGED_OLLAMA_MODELS.map((item) => ({
+        ...item,
+        removeCommand: `ollama rm ${item.model}`,
+      })),
+      instructions:
+        'To use local AI models, install Ollama first. Then open PowerShell and run the model download command. After the download finishes, refresh this page and click Check Installed Models.',
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error?.message || 'Unable to load model inventory.' });
+  }
+});
+
+app.post('/api/admin/models/check', async (req, res) => {
+  try {
+    await ensureAdminAccount(req);
+    const inventory = await readModelInventory();
+    return res.json({ ok: true, inventory });
+  } catch (error) {
+    return res.status(error?.code === 'OWNER_ADMIN_REQUIRED' ? 403 : 500).json({
+      error: error?.message || 'Unable to check installed models.',
+    });
+  }
+});
+
+app.post('/api/admin/models/action', async (req, res) => {
+  try {
+    await ensureAdminAccount(req);
+    const actionKey = String(req.body?.actionKey || '').trim();
+    const inventory = await readModelInventory();
+    if (!inventory.installed || !inventory.running) {
+      return res.status(503).json({
+        error:
+          'Ollama is missing or offline. Install Ollama, start it, and then try again or use the copy command shown in settings.',
+        inventory,
+      });
+    }
+    const output = await executeAllowedOllamaCommand(actionKey);
+    const refreshed = await readModelInventory();
+    return res.json({
+      ok: true,
+      output,
+      inventory: refreshed,
+    });
+  } catch (error) {
+    const status = error?.code === 'OWNER_ADMIN_REQUIRED' ? 403 : 500;
+    return res.status(status).json({
+      error: error?.message || 'Unable to process model action.',
+    });
+  }
+});
+
+app.post('/api/donations/claim', (req, res) => {
+  try {
+    const account = normalizeAccountInput(req.body?.account);
+    if (!account) {
+      return res.status(400).json({ error: 'Account required.' });
+    }
+
+    const record = queuePendingPurchase(account, {
+      plan: req.body?.plan,
+      tokens: req.body?.tokens,
+      amountUsd: req.body?.amountUsd,
+    });
+
+    return res.json({
+      ok: true,
+      message: 'Temporary access granted and logged for review. It will auto-revoke if not verified within 24 hours.',
+      account: sanitizeAccountRecord(record),
+      memory: sanitizeMemory(record.memory),
+    });
+  } catch (error) {
+    const status = error?.code === 'ACCOUNT_REQUIRED' ? 400 : 500;
+    return res.status(status).json({
+      error: error?.message || 'Unable to create a pending donation record.',
+    });
+  }
 });
 
 app.post('/api/admin/token-credit', (req, res) => {
@@ -1088,24 +1585,16 @@ app.post('/api/admin/token-credit', (req, res) => {
   }
 });
 
-async function handleChatRequest({ message, history, modelMode, providerMode, webMode, accountInput }) {
-  const tavilyConfigured = hasTavilyKey();
-  const liveRequested = webMode || looksLikeLiveQuestion(message);
+async function handleChatRequest({
+  message,
+  history,
+  modelMode,
+  providerMode,
+  assistantMode,
+  localModelPreference,
+  accountInput,
+}) {
   const accountRecord = getOrCreateAccountRecord(accountInput);
-
-  if (liveRequested && !tavilyConfigured) {
-    return {
-      reply:
-        'Live web search is not set up yet. Add TAVILY_API_KEY to enable current news, weather, prices, sports, and other real-time answers.',
-      provider: 'error',
-      modelUsed: null,
-      webUsed: false,
-      sources: [],
-      error: true,
-      account: sanitizeAccountRecord(accountRecord),
-      memory: sanitizeMemory(accountRecord.memory),
-    };
-  }
 
   const memoryUpdates = extractMemoryUpdates(message);
   if (Object.keys(memoryUpdates.profile).length > 0 || memoryUpdates.notes.length > 0) {
@@ -1115,26 +1604,13 @@ async function handleChatRequest({ message, history, modelMode, providerMode, we
     writeAccountStore();
   }
 
-  let webContext = '';
-  let webUsed = false;
-  let sources = [];
-
-  if (liveRequested) {
-    const search = await searchTavily(message);
-    webContext = buildSearchContext(message, search);
-    webUsed = true;
-    sources = search.results.map((result) => ({
-      title: result.title || 'Untitled result',
-      url: result.url || result.raw_url || '',
-    }));
-  }
-
   const usageCost = estimateTokenUsage({
     message,
     history,
-    webMode,
     providerMode,
     modelMode,
+    assistantMode,
+    localModelPreference,
   });
 
   const usageRecord = reserveUsage(accountRecord, usageCost);
@@ -1145,14 +1621,16 @@ async function handleChatRequest({ message, history, modelMode, providerMode, we
       history,
       modelMode,
       providerMode,
-      webContext,
+      webContext: '',
       memory: usageRecord.memory,
+      assistantMode,
+      localModelPreference,
     });
 
     return {
       ...replyData,
-      webUsed,
-      sources,
+      webUsed: false,
+      sources: [],
       error: false,
       usageCost,
       account: sanitizeAccountRecord(usageRecord),
@@ -1179,7 +1657,8 @@ app.post('/api/chat', async (req, res) => {
     const history = normalizeHistory(req.body.history);
     const modelMode = normalizeModelMode(req.body.modelMode);
     const providerMode = normalizeProviderMode(req.body.providerMode);
-    const webMode = Boolean(req.body.webMode);
+    const assistantMode = normalizeAssistantMode(req.body.assistantMode);
+    const localModelPreference = normalizeLocalModelPreference(req.body.localModelPreference);
     const account = normalizeAccountInput(req.body.account);
 
     if (!message) {
@@ -1196,7 +1675,8 @@ app.post('/api/chat', async (req, res) => {
         history,
         modelMode,
         providerMode,
-        webMode,
+        assistantMode,
+        localModelPreference,
         accountInput: account,
       });
 
@@ -1244,49 +1724,20 @@ app.post('/api/v1/chat', async (req, res) => {
     const history = normalizeHistory(req.body.history);
     const modelMode = normalizeModelMode(req.body.modelMode);
     const providerMode = normalizeProviderMode(req.body.providerMode);
-    const webMode = Boolean(req.body.webMode);
+    const assistantMode = normalizeAssistantMode(req.body.assistantMode);
+    const localModelPreference = normalizeLocalModelPreference(req.body.localModelPreference);
 
     if (!message) {
       return res.status(400).json({ error: 'Message cannot be empty.' });
     }
 
-    const tavilyConfigured = hasTavilyKey();
-    const liveRequested = webMode || looksLikeLiveQuestion(message);
-
-    if (liveRequested && !tavilyConfigured) {
-      return respondWithMessage(res, {
-        reply:
-          'Live web search is not set up yet. Add TAVILY_API_KEY to enable current news, weather, prices, sports, and other real-time answers.',
-        provider: 'error',
-        modelUsed: null,
-        webUsed: false,
-        sources: [],
-        error: true,
-        account: sanitizeAccountRecord(accountRecord),
-        memory: sanitizeMemory(accountRecord.memory),
-      });
-    }
-
-    let webContext = '';
-    let webUsed = false;
-    let sources = [];
-
-    if (liveRequested) {
-      const search = await searchTavily(message);
-      webContext = buildSearchContext(message, search);
-      webUsed = true;
-      sources = search.results.map((result) => ({
-        title: result.title || 'Untitled result',
-        url: result.url || result.raw_url || '',
-      }));
-    }
-
     const usageCost = estimateTokenUsage({
       message,
       history,
-      webMode,
       providerMode,
       modelMode,
+      assistantMode,
+      localModelPreference,
     });
 
     let usageRecord;
@@ -1309,14 +1760,16 @@ app.post('/api/v1/chat', async (req, res) => {
         history,
         modelMode,
         providerMode,
-        webContext,
+        webContext: '',
         memory: usageRecord.memory,
+        assistantMode,
+        localModelPreference,
       });
 
       return respondWithMessage(res, {
         ...replyData,
-        webUsed,
-        sources,
+        webUsed: false,
+        sources: [],
         error: false,
         usageCost,
         account: sanitizeAccountRecord(usageRecord),

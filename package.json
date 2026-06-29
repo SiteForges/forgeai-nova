@@ -1,7 +1,7 @@
 {
   "name": "forgeai",
   "version": "1.0.0",
-  "description": "ForgeAI is a premium AI chat website powered by Groq with optional Tavily live web search.",
+  "description": "ForgeAI is a premium AI chat website powered by Groq with Ollama local fallback and admin-managed local models.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

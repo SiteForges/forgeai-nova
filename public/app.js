@@ -7,9 +7,24 @@ const PROVIDER_BADGES = {
   ollama: { label: 'Ollama Local', className: 'ollama' },
   error: { label: 'Error', className: 'error' },
 };
+const ASSISTANT_MODE_LABELS = {
+  general: 'General Chat',
+  email: 'Write Email',
+  code: 'Code Helper',
+  prompt: 'Prompt Builder',
+};
+const VOICE_STYLE_LABELS = {
+  calm: 'Calm',
+  professional: 'Professional',
+  friendly: 'Friendly',
+  deep: 'Deep',
+  fast: 'Fast',
+  slow: 'Slow',
+};
 
 const state = {
   health: null,
+  modelInventory: null,
   account: null,
   memory: {
     profile: { name: '', job: '', location: '' },
@@ -18,17 +33,29 @@ const state = {
   settings: {
     providerMode: 'auto',
     modelMode: 'smart',
-    webMode: false,
+    assistantMode: 'general',
+    localModelPreference: 'default',
+    voiceStyle: 'friendly',
   },
   conversations: [],
   activeConversationId: null,
   apiKeys: [],
-  tokenPacks: [],
+  supportLinks: [],
   searchQuery: '',
   status: 'Ready when you are.',
   isSending: false,
   settingsOpen: false,
   activeSettingsTab: 'account',
+  voice: {
+    recognition: null,
+    recognitionActive: false,
+    recognitionPurpose: 'composer',
+    callOpen: false,
+    micMuted: false,
+    status: 'Ready',
+    userCaption: 'Waiting for your microphone.',
+    aiCaption: 'Spoken replies will appear here.',
+  },
 };
 
 const els = {
@@ -50,6 +77,7 @@ const els = {
   usageFill: document.querySelector('[data-usage-fill]'),
   usageCaption: document.querySelector('[data-usage-caption]'),
   accountName: document.querySelector('[data-account-name]'),
+  accountBadge: document.querySelector('[data-account-badge]'),
   accountEmail: document.querySelector('[data-account-email]'),
   accountAvatar: document.querySelector('[data-account-avatar]'),
   sidebar: document.querySelector('[data-sidebar]'),
@@ -66,17 +94,27 @@ const els = {
   switchAccountButtons: document.querySelectorAll('[data-switch-account]'),
   signOutButton: document.querySelector('[data-sign-out]'),
   providerMode: document.querySelector('[data-provider-mode]'),
+  modelPreference: document.querySelector('[data-model-preference]'),
+  modelPreferenceToolbar: document.querySelector('[data-model-preference-toolbar]'),
+  modelHelp: document.querySelector('[data-model-help]'),
+  assistantMode: document.querySelector('[data-assistant-mode]'),
+  assistantModeCards: document.querySelectorAll('[data-assistant-mode-card]'),
   modelButtons: document.querySelectorAll('[data-model-mode]'),
-  webToggle: document.querySelector('[data-web-toggle]'),
+  voiceStyle: document.querySelector('[data-voice-style]'),
+  voiceStyleToolbar: document.querySelector('[data-voice-style-toolbar]'),
   settingsName: document.querySelector('[data-settings-name]'),
   settingsEmail: document.querySelector('[data-settings-email]'),
   settingsPlan: document.querySelector('[data-settings-plan]'),
   settingsUsage: document.querySelector('[data-settings-usage]'),
   healthGroq: document.querySelector('[data-health-groq]'),
   healthOllama: document.querySelector('[data-health-ollama]'),
-  healthTavily: document.querySelector('[data-health-tavily]'),
+  healthLocalModels: document.querySelector('[data-health-local-models]'),
+  localModelsPanel: document.querySelector('[data-local-models-panel]'),
+  checkModelsButton: document.querySelector('[data-check-models]'),
+  modelsGrid: document.querySelector('[data-models-grid]'),
+  modelsSetupMessage: document.querySelector('[data-models-setup-message]'),
   createApiKeyButton: document.querySelector('[data-create-api-key]'),
-  openBillingTabButton: document.querySelector('[data-open-billing-tab]'),
+  openSupportTabButton: document.querySelector('[data-open-billing-tab]'),
   apiKeyOutput: document.querySelector('[data-api-key-output]'),
   apiHero: document.querySelector('[data-api-hero]'),
   apiKeyList: document.querySelector('[data-api-key-list]'),
@@ -87,8 +125,19 @@ const els = {
   memoryNoteForm: document.querySelector('[data-memory-note-form]'),
   memoryNote: document.querySelector('[data-memory-note]'),
   memoryList: document.querySelector('[data-memory-list]'),
-  billingOverview: document.querySelector('[data-billing-overview]'),
-  packGrid: document.querySelector('[data-pack-grid]'),
+  supportOverview: document.querySelector('[data-billing-overview]'),
+  micToggleButton: document.querySelector('[data-mic-toggle]'),
+  voiceStatusLine: document.querySelector('[data-voice-status-line]'),
+  openVoiceCallButtons: document.querySelectorAll('[data-open-voice-call]'),
+  voiceOverlay: document.querySelector('[data-voice-overlay]'),
+  closeVoiceCallButton: document.querySelector('[data-close-voice-call]'),
+  voiceListenButton: document.querySelector('[data-voice-listen]'),
+  voiceMuteButton: document.querySelector('[data-voice-mute]'),
+  voiceStopButton: document.querySelector('[data-voice-stop]'),
+  voiceCallState: document.querySelector('[data-voice-call-state]'),
+  voiceCallHelp: document.querySelector('[data-voice-call-help]'),
+  voiceUserCaption: document.querySelector('[data-voice-user-caption]'),
+  voiceAiCaption: document.querySelector('[data-voice-ai-caption]'),
   toastStack: document.querySelector('[data-toast-stack]'),
 };
 
@@ -120,11 +169,27 @@ function normalizePlan(plan) {
   return plan === 'pro' ? 'pro' : 'free';
 }
 
+function normalizeAssistantMode(mode) {
+  return Object.prototype.hasOwnProperty.call(ASSISTANT_MODE_LABELS, mode) ? mode : 'general';
+}
+
+function normalizeLocalModelPreference(value) {
+  return ['default', 'qwen36', 'fallback', 'gemma4', 'gemma3'].includes(value) ? value : 'default';
+}
+
+function normalizeVoiceStyle(value) {
+  return Object.prototype.hasOwnProperty.call(VOICE_STYLE_LABELS, value) ? value : 'friendly';
+}
+
 function getPlanLabel(plan) {
   const normalized = normalizePlan(plan);
   if (normalized === 'owner') return 'Owner';
-  if (normalized === 'pro') return 'AI Pro';
+  if (normalized === 'pro') return 'PRO AI';
   return 'Free';
+}
+
+function hasProAccess(account = state.account) {
+  return Boolean(account);
 }
 
 function readJSON(key, fallback) {
@@ -161,13 +226,20 @@ function createConversation() {
 
 function normalizeAccount(account) {
   if (!account || typeof account !== 'object') return null;
+  const planFromLabel = String(account.planLabel || '').trim().toLowerCase();
+  const resolvedPlan =
+    planFromLabel === 'pro ai'
+      ? 'pro'
+      : planFromLabel === 'owner'
+        ? 'owner'
+        : normalizePlan(account.plan);
 
   return {
     id: String(account.id || '').trim(),
     kind: ['local', 'guest', 'google'].includes(account.kind) ? account.kind : 'local',
     name: String(account.name || 'ForgeAI User').trim(),
     email: String(account.email || 'user@example.com').trim(),
-    plan: normalizePlan(account.plan),
+    plan: resolvedPlan,
     role: account.role === 'owner' ? 'owner' : 'member',
     isUnlimited: account.isUnlimited === true,
     tokenLimit: Number.isFinite(account.tokenLimit) ? account.tokenLimit : 200,
@@ -246,7 +318,9 @@ function loadAccountWorkspace() {
   state.settings = {
     providerMode: ['auto', 'groq', 'ollama'].includes(savedSettings.providerMode) ? savedSettings.providerMode : 'auto',
     modelMode: ['fast', 'smart', 'creative'].includes(savedSettings.modelMode) ? savedSettings.modelMode : 'smart',
-    webMode: Boolean(savedSettings.webMode),
+    assistantMode: normalizeAssistantMode(savedSettings.assistantMode),
+    localModelPreference: normalizeLocalModelPreference(savedSettings.localModelPreference),
+    voiceStyle: normalizeVoiceStyle(savedSettings.voiceStyle),
   };
 
   state.conversations = Array.isArray(savedConversations) ? savedConversations : [];
@@ -395,8 +469,26 @@ function estimateClientTokenCost(message, history = []) {
   const historyCost = Math.min(6, Math.ceil(history.length / 3));
   const providerCost = state.settings.providerMode === 'ollama' ? 0 : state.settings.providerMode === 'groq' ? 3 : 2;
   const modeCost = state.settings.modelMode === 'creative' ? 8 : state.settings.modelMode === 'smart' ? 4 : 0;
-  const webCost = state.settings.webMode ? 4 : 0;
-  return Math.max(10, Math.min(30, base + lengthCost + historyCost + providerCost + modeCost + webCost));
+  const webCost = 0;
+  const assistantCost =
+    state.settings.assistantMode === 'code'
+      ? 4
+      : state.settings.assistantMode === 'prompt'
+        ? 3
+        : state.settings.assistantMode === 'email'
+          ? 2
+          : 0;
+  const localModelCost =
+    state.settings.localModelPreference === 'qwen36'
+      ? 5
+      : state.settings.localModelPreference === 'gemma4'
+        ? 3
+        : state.settings.localModelPreference === 'gemma3'
+          ? 1
+          : state.settings.localModelPreference === 'fallback'
+            ? 1
+            : 0;
+  return Math.max(10, Math.min(36, base + lengthCost + historyCost + providerCost + modeCost + webCost + assistantCost + localModelCost));
 }
 
 function showToast(title, body = '', kind = 'success') {
@@ -412,6 +504,19 @@ function showToast(title, body = '', kind = 'success') {
 function setStatus(text) {
   state.status = text;
   els.status.textContent = text;
+}
+
+function setVoiceStatus(status, detail = '') {
+  state.voice.status = status;
+  if (els.voiceStatusLine) {
+    els.voiceStatusLine.textContent = detail ? `Voice: ${status} - ${detail}` : `Voice: ${status}`;
+  }
+  if (els.voiceCallState) {
+    els.voiceCallState.textContent = status;
+  }
+  if (detail && els.voiceCallHelp) {
+    els.voiceCallHelp.textContent = detail;
+  }
 }
 
 function setSending(isSending) {
@@ -463,15 +568,22 @@ async function refreshHealth() {
     state.health = {
       ok: true,
       groqConfigured: false,
-      tavilyConfigured: false,
       ollamaModel: 'Backend required',
+      qwen36Model: 'qwen3.6:27b',
+      qwen36Available: false,
+      fallbackModelAvailable: false,
+      ollamaReachable: false,
+      ollamaInstalled: false,
+      installedModels: [],
+      managedModels: [],
+      qwenSetupCommand: 'ollama run qwen3.6:27b',
     };
-    state.tokenPacks = [
-      { code: 'pack_200', tokens: 200, amountUsd: 5, paypalUrl: 'https://paypal.me/AlexanderBatti/5' },
-      { code: 'pack_400', tokens: 400, amountUsd: 10, paypalUrl: 'https://paypal.me/AlexanderBatti/10' },
-      { code: 'pack_800', tokens: 800, amountUsd: 15, paypalUrl: 'https://paypal.me/AlexanderBatti/15' },
-      { code: 'pack_1200', tokens: 1200, amountUsd: 20, paypalUrl: 'https://paypal.me/AlexanderBatti/20' },
-      { code: 'pack_200000', tokens: 200000, amountUsd: 2000, paypalUrl: 'https://paypal.me/AlexanderBatti/2000' },
+    state.supportLinks = [
+      { code: 'support_200', tokens: 200, amountUsd: 5, donationUrl: 'https://paypal.me/AlexanderBatti/5' },
+      { code: 'support_400', tokens: 400, amountUsd: 10, donationUrl: 'https://paypal.me/AlexanderBatti/10' },
+      { code: 'support_800', tokens: 800, amountUsd: 15, donationUrl: 'https://paypal.me/AlexanderBatti/15' },
+      { code: 'support_1200', tokens: 1200, amountUsd: 20, donationUrl: 'https://paypal.me/AlexanderBatti/20' },
+      { code: 'support_200000', tokens: 200000, amountUsd: 2000, donationUrl: 'https://paypal.me/AlexanderBatti/2000' },
     ];
     return;
   }
@@ -479,10 +591,14 @@ async function refreshHealth() {
   try {
     const data = await fetchJSON('/api/health');
     state.health = data;
-    state.tokenPacks = Array.isArray(data.tokenPacks) ? data.tokenPacks : [];
+    state.modelInventory = Array.isArray(data.managedModels)
+      ? { models: data.managedModels, installedModels: data.installedModels || [] }
+      : null;
+    state.supportLinks = Array.isArray(data.donationLinks) ? data.donationLinks : [];
   } catch {
     state.health = null;
-    state.tokenPacks = [];
+    state.modelInventory = null;
+    state.supportLinks = [];
   }
 }
 
@@ -570,13 +686,14 @@ function renderAccount() {
     els.accountEmail.textContent = 'Choose an account to start.';
     els.accountAvatar.textContent = 'F';
     els.accountAvatar.style.background = '#4c7cf7';
-    els.usageText.textContent = '200 / 200 tokens';
+    els.accountBadge.hidden = true;
+    els.usageText.textContent = '1000 / 1000 tokens';
     els.usageFill.style.width = '0%';
     els.usageCaption.textContent = 'Free plan renews every 2 days.';
     els.settingsName.textContent = 'Not signed in';
     els.settingsEmail.textContent = 'Not signed in';
     els.settingsPlan.textContent = 'Free';
-    els.settingsUsage.textContent = '200 / 200 tokens';
+    els.settingsUsage.textContent = '1000 / 1000 tokens';
     return;
   }
 
@@ -592,6 +709,7 @@ function renderAccount() {
     state.account.kind === 'guest' ? 'Guest mode on this device' : state.account.email;
   els.accountAvatar.textContent = initials;
   els.accountAvatar.style.background = getAvatarColor(`${state.account.name}|${state.account.email}`);
+  els.accountBadge.hidden = normalizePlan(state.account.plan) !== 'pro';
 
   const usageText = state.account.isUnlimited
     ? 'Unlimited tokens'
@@ -605,6 +723,9 @@ function renderAccount() {
   els.settingsPlan.textContent = getPlanLabel(state.account.plan);
   els.settingsUsage.textContent = `${usageText} | ${apiUsageText}`;
   els.usageCaption.textContent = formatRenewal(state.account);
+  if (state.health?.support && els.settingsEmail) {
+    // Support info is shown in the Account section markup.
+  }
 
   const usedRatio = state.account.isUnlimited
     ? 0
@@ -616,8 +737,16 @@ function renderAccount() {
 
 function renderHealth() {
   els.healthGroq.textContent = state.health?.groqConfigured ? 'Connected' : 'Missing key';
-  els.healthOllama.textContent = state.health?.ollamaModel ? state.health.ollamaModel : 'Unavailable';
-  els.healthTavily.textContent = state.health?.tavilyConfigured ? 'Live search ready' : 'Not configured';
+  if (!state.health?.ollamaReachable) {
+    els.healthOllama.textContent = 'Offline';
+  } else if (state.health?.qwen36Available) {
+    els.healthOllama.textContent = `${state.health.qwen36Model} ready`;
+  } else {
+    els.healthOllama.textContent = state.health?.ollamaModel ? `${state.health.ollamaModel} ready` : 'Available';
+  }
+  els.healthLocalModels.textContent = state.health?.ollamaInstalled
+    ? `${Array.isArray(state.health?.installedModels) ? state.health.installedModels.length : 0} installed`
+    : 'Setup needed';
 }
 
 function renderSettingsTabs() {
@@ -643,16 +772,12 @@ function renderApiKeys() {
     : state.settings.providerMode === 'groq'
       ? 'Requests are set to Groq only for API and chat responses.'
       : 'Requests use Groq first and fall back to Ollama automatically.';
-  const liveSummary = state.health?.tavilyConfigured
-    ? 'Live web enrichment is available when Web Mode is enabled.'
-    : 'Live web enrichment is not configured yet.';
-
   if (els.apiHero) {
     els.apiHero.innerHTML = `
       <div class="overview-card accent">
-        <span class="detail-label">API wallet</span>
+        <span class="detail-label">Support</span>
         <strong>${escapeHTML(walletSummary)}</strong>
-        <p>Use this wallet for ForgeAI API calls made with your private key.</p>
+        <p>Use your API key with ForgeAI from the backend. Everything stays tied to your account.</p>
       </div>
       <div class="overview-card">
         <span class="detail-label">Routing</span>
@@ -660,9 +785,9 @@ function renderApiKeys() {
         <p>Model mode and provider mode carry into the backend API request path.</p>
       </div>
       <div class="overview-card">
-        <span class="detail-label">Live data</span>
-        <strong>${escapeHTML(liveSummary)}</strong>
-        <p>When available, Tavily search can feed both Groq and Ollama with fresh context.</p>
+        <span class="detail-label">Local AI</span>
+        <strong>${escapeHTML(state.health?.ollamaReachable ? 'Ollama is connected and ready.' : 'Ollama needs attention.')}</strong>
+        <p>ForgeAI can use local Ollama models directly from the backend on this computer.</p>
       </div>
     `;
   }
@@ -704,50 +829,27 @@ function renderMemory() {
 }
 
 function renderTokenPacks() {
-  if (els.billingOverview) {
+  if (els.supportOverview) {
     const chatAllowance = !state.account
-      ? 'Free account: 200 chat tokens every 2 days.'
+      ? 'Free account: 1000 chat tokens every 2 days.'
       : state.account.isUnlimited
         ? 'Owner account: unlimited chat and API usage.'
         : `${getPlanLabel(state.account.plan)} account: ${state.account.tokensRemaining} / ${state.account.tokenLimit} chat tokens remaining.`;
-    const apiAllowance = !state.account
-      ? 'Starter API wallet unlocks after sign-in.'
-      : state.account.isUnlimited
-        ? 'Unlimited API tokens for this account.'
-        : `${state.account.apiTokensRemaining} / ${state.account.apiTokenLimit} API tokens remaining.`;
+    const donationNote = 'ForgeAI is fully free. Donations help keep the project running but never unlock special features.';
 
-    els.billingOverview.innerHTML = `
+    els.supportOverview.innerHTML = `
       <div class="overview-card">
         <span class="detail-label">Chat allowance</span>
         <strong>${escapeHTML(chatAllowance)}</strong>
         <p>Chat usage renews automatically based on your plan.</p>
       </div>
       <div class="overview-card accent">
-        <span class="detail-label">API wallet</span>
-        <strong>${escapeHTML(apiAllowance)}</strong>
-        <p>Token packs below add credits for ForgeAI API calls.</p>
+        <span class="detail-label">Support</span>
+        <strong>Free access</strong>
+        <p>${escapeHTML(donationNote)}</p>
       </div>
     `;
   }
-
-  els.packGrid.innerHTML = state.tokenPacks
-    .map((pack) => {
-      const featured = Number(pack.tokens) >= 800;
-      return `
-        <div class="pack-card ${featured ? 'featured' : ''}">
-          <div class="pack-topline">
-            <span class="pack-price">$${pack.amountUsd}</span>
-            ${featured ? '<span class="pack-badge">Popular</span>' : ''}
-          </div>
-          <strong>${pack.tokens} API tokens</strong>
-          <span>One-time wallet top-up for ForgeAI API usage.</span>
-          <a class="secondary-button compact" href="${escapeHTML(pack.paypalUrl)}" target="_blank" rel="noreferrer">
-            Buy API tokens
-          </a>
-        </div>
-      `;
-    })
-    .join('');
 }
 
 function getLatestAssistantMessage() {
@@ -785,6 +887,7 @@ function renderChatList() {
 }
 
 function renderIntro() {
+  const proLocked = !hasProAccess();
   return `
     <div class="intro-screen">
       <div class="intro-mark">
@@ -793,7 +896,7 @@ function renderIntro() {
         </span>
         ForgeAI Nova
       </div>
-      <h2>Your AI assistant for writing, coding, learning, and real-time answers.</h2>
+      <h2>Your AI assistant for writing, coding, learning, and premium local or cloud AI help.</h2>
       <p>
         Nova uses Groq first, falls back to Ollama when needed, keeps chats separated per account on this device,
         and can remember details like your name, role, or preferences inside your own workspace.
@@ -803,13 +906,29 @@ function renderIntro() {
         <button class="secondary-button compact" type="button" data-open-settings-inline>Open settings</button>
       </div>
       <div class="quick-grid">
+        <button class="quick-card interactive" type="button" data-assistant-mode-card="email" data-pro-feature="${proLocked ? 'locked' : 'open'}">
+          <span class="feature-pill">PRO AI</span>
+          <strong>Email Writer</strong>
+          <p>Write, rewrite, shorten, or professionalize emails with one focused mode.</p>
+        </button>
+        <button class="quick-card interactive" type="button" data-assistant-mode-card="code" data-pro-feature="${proLocked ? 'locked' : 'open'}">
+          <span class="feature-pill">PRO AI</span>
+          <strong>Code Helper</strong>
+          <p>Generate code, fix bugs, explain errors, and plan website edits with better technical context.</p>
+        </button>
+        <button class="quick-card interactive" type="button" data-assistant-mode-card="prompt" data-pro-feature="${proLocked ? 'locked' : 'open'}">
+          <span class="feature-pill">PRO AI</span>
+          <strong>Prompt Builder</strong>
+          <p>Create sharper prompts for websites, apps, coding tools, image systems, and AI assistants.</p>
+        </button>
+        <button class="quick-card interactive" type="button" data-open-voice-call-inline data-pro-feature="${proLocked ? 'locked' : 'open'}">
+          <span class="feature-pill">VOICE</span>
+          <strong>Voice Chat</strong>
+          <p>Talk naturally, see live captions, and hear Nova answer back with your saved voice style.</p>
+        </button>
         <div class="quick-card">
           <strong>Chat</strong>
           <p>Clean conversation view, copy, regenerate, chat history, and auto-save.</p>
-        </div>
-        <div class="quick-card">
-          <strong>AI modes</strong>
-          <p>Use low, balanced, or high intelligence levels with Groq, Ollama, or auto fallback.</p>
         </div>
         <div class="quick-card">
           <strong>Memory</strong>
@@ -817,7 +936,7 @@ function renderIntro() {
         </div>
         <div class="quick-card">
           <strong>Developer access</strong>
-          <p>Create API keys and manage billing from one settings area instead of hunting through the UI.</p>
+          <p>Create API keys and manage support from one settings area instead of hunting through the UI.</p>
         </div>
       </div>
     </div>
@@ -832,7 +951,6 @@ function renderMessages(conversation) {
         ? `
             <div class="message-meta">
               ${message.provider === 'error' ? 'Answered by Error' : `Answered by ${escapeHTML(PROVIDER_BADGES[message.provider || 'standby']?.label || 'ForgeAI')}`}
-              ${message.webUsed ? ' | Live web context used' : ''}
             </div>
           `
         : '';
@@ -895,10 +1013,99 @@ function renderThread() {
 
 function renderControls() {
   els.providerMode.value = state.settings.providerMode;
-  els.webToggle.checked = state.settings.webMode;
+  if (els.modelPreference) els.modelPreference.value = state.settings.localModelPreference;
+  if (els.modelPreferenceToolbar) els.modelPreferenceToolbar.value = state.settings.localModelPreference;
+  if (els.assistantMode) els.assistantMode.value = state.settings.assistantMode;
+  if (els.voiceStyle) els.voiceStyle.value = state.settings.voiceStyle;
+  if (els.voiceStyleToolbar) els.voiceStyleToolbar.value = state.settings.voiceStyle;
   els.modelButtons.forEach((button) => {
     button.classList.toggle('active', button.dataset.modelMode === state.settings.modelMode);
   });
+  els.assistantModeCards.forEach((button) => {
+    button.classList.toggle('active', button.dataset.assistantModeCard === state.settings.assistantMode);
+  });
+
+  if (els.modelHelp) {
+    if (state.settings.localModelPreference === 'qwen36') {
+      els.modelHelp.textContent = state.health?.qwen36Available
+        ? `Qwen 3.6 is available locally through Ollama as ${state.health.qwen36Model}.`
+        : `Qwen 3.6 is not installed locally yet. Run "${state.health?.qwenSetupCommand || 'ollama run qwen3.6:27b'}" in PowerShell, then try again.`;
+    } else if (state.settings.localModelPreference === 'gemma4') {
+      els.modelHelp.textContent = 'Gemma4 uses Ollama locally when it is installed on this computer.';
+    } else if (state.settings.localModelPreference === 'gemma3') {
+      els.modelHelp.textContent = 'Gemma3 4B is the lighter local option for faster responses on weaker computers.';
+    } else if (state.settings.localModelPreference === 'fallback') {
+      els.modelHelp.textContent = `Qwen3 4B uses your local Ollama model: ${state.health?.ollamaModel || 'local model'}.`;
+    } else {
+      els.modelHelp.textContent = 'Auto mode uses Groq first, then Qwen3.6 27B, Gemma4, Qwen3 4B, and Gemma3 4B when they are available locally.';
+    }
+  }
+
+  if (els.voiceMuteButton) {
+    els.voiceMuteButton.textContent = state.voice.micMuted ? 'Unmute mic' : 'Mute mic';
+  }
+  if (els.voiceUserCaption) {
+    els.voiceUserCaption.textContent = state.voice.userCaption;
+  }
+  if (els.voiceAiCaption) {
+    els.voiceAiCaption.textContent = state.voice.aiCaption;
+  }
+}
+
+function isOwnerAccount() {
+  return Boolean(
+    state.account &&
+      (state.account.role === 'owner' || String(state.account.email || '').trim().toLowerCase() === 'thisisalexanderbatti@gmail.com')
+  );
+}
+
+function renderModelManager() {
+  if (!els.localModelsPanel || !els.modelsGrid) return;
+
+  const canSee = isOwnerAccount();
+  els.localModelsPanel.hidden = !canSee;
+  if (!canSee) return;
+
+  const models = Array.isArray(state.modelInventory?.models)
+    ? state.modelInventory.models
+    : Array.isArray(state.health?.managedModels)
+      ? state.health.managedModels
+      : [];
+
+  if (els.modelsSetupMessage) {
+    els.modelsSetupMessage.textContent =
+      state.modelInventory?.error ||
+      'To use local AI models, install Ollama first. Then open PowerShell and run the model download command. After the download finishes, refresh this page and click Check Installed Models.';
+  }
+
+  els.modelsGrid.innerHTML = models
+    .map(
+      (model) => `
+        <div class="model-card">
+          <div class="model-card-head">
+            <div>
+              <strong>${escapeHTML(model.label)}</strong>
+              <p>${escapeHTML(model.model)}</p>
+            </div>
+            <span class="model-status ${model.installed ? 'ready' : 'missing'}">${model.installed ? 'Installed' : 'Not installed'}</span>
+          </div>
+          <div class="inline-actions wrap">
+            <button class="secondary-button compact" type="button" data-model-action="${model.key}-pull">Download</button>
+            <button class="secondary-button compact" type="button" data-model-action="${model.key}-run">Test Model</button>
+            <button class="text-button danger" type="button" data-model-action="${model.key}-rm">Remove Model</button>
+          </div>
+          <div class="model-command-row">
+            <code>${escapeHTML(model.pullCommand)}</code>
+            <button class="message-action" type="button" data-copy-command="${escapeHTML(model.pullCommand)}">Copy</button>
+          </div>
+          <div class="model-command-row">
+            <code>${escapeHTML(model.runCommand)}</code>
+            <button class="message-action" type="button" data-copy-command="${escapeHTML(model.runCommand)}">Copy</button>
+          </div>
+        </div>
+      `
+    )
+    .join('');
 }
 
 function renderAll() {
@@ -907,6 +1114,7 @@ function renderAll() {
   renderChatList();
   renderThread();
   renderControls();
+  renderModelManager();
   renderApiKeys();
   renderMemory();
   renderTokenPacks();
@@ -977,6 +1185,7 @@ async function signInAccount(account) {
   loadAccountWorkspace();
   await refreshAccountFromServer();
   await Promise.all([refreshMemory(), refreshApiKeys()]);
+  await refreshModelInventory();
   setAuthLocked(false);
   setSending(false);
   setStatus('Signed in and ready.');
@@ -985,6 +1194,11 @@ async function signInAccount(account) {
 }
 
 function signOutAccount() {
+  stopRecognition();
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+  closeVoiceCall();
   setCurrentAccount(null);
   state.memory = normalizeMemory({});
   state.apiKeys = [];
@@ -1115,11 +1329,192 @@ async function copyText(text) {
   fallback.remove();
 }
 
+function getSpeechRecognitionConstructor() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+function closeVoiceCall() {
+  state.voice.callOpen = false;
+  if (els.voiceOverlay) {
+    els.voiceOverlay.hidden = true;
+  }
+  document.body.classList.remove('voice-open');
+}
+
+function openVoiceCall() {
+  if (!state.account) {
+    showToast('Sign in required', 'Sign in before starting a voice call.', 'error');
+    return;
+  }
+  state.voice.callOpen = true;
+  state.voice.userCaption = state.voice.userCaption || 'Waiting for your microphone.';
+  state.voice.aiCaption = state.voice.aiCaption || 'Spoken replies will appear here.';
+  if (els.voiceOverlay) {
+    els.voiceOverlay.hidden = false;
+  }
+  document.body.classList.add('voice-open');
+  renderControls();
+  setVoiceStatus('Ready', 'Start listening when you want to speak with Nova.');
+}
+
+function stopRecognition() {
+  if (state.voice.recognition) {
+    try {
+      state.voice.recognition.stop();
+    } catch {}
+  }
+  state.voice.recognitionActive = false;
+}
+
+function pickSpeechVoice(style) {
+  const voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+  if (!voices.length) return null;
+
+  const styleMatchers = {
+    calm: ['aria', 'sara', 'serena', 'libby', 'jenny'],
+    professional: ['guy', 'davis', 'daniel', 'microsoft david', 'google us english'],
+    friendly: ['jenny', 'aria', 'samantha', 'alloy', 'ava'],
+    deep: ['guy', 'davis', 'alex', 'roger'],
+    fast: ['aria', 'guy', 'jenny'],
+    slow: ['sara', 'serena', 'libby'],
+  };
+
+  const terms = styleMatchers[style] || styleMatchers.friendly;
+  return (
+    voices.find((voice) => terms.some((term) => voice.name.toLowerCase().includes(term))) ||
+    voices.find((voice) => voice.lang.toLowerCase().startsWith('en')) ||
+    voices[0]
+  );
+}
+
+function speakReply(text, options = {}) {
+  if (!window.speechSynthesis || !text) return Promise.resolve();
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  const selectedVoice = pickSpeechVoice(state.settings.voiceStyle);
+  if (selectedVoice) {
+    utterance.voice = selectedVoice;
+  }
+
+  const style = state.settings.voiceStyle;
+  utterance.rate = style === 'fast' ? 1.2 : style === 'slow' ? 0.88 : 1;
+  utterance.pitch = style === 'deep' ? 0.8 : style === 'friendly' ? 1.08 : 1;
+
+  return new Promise((resolve) => {
+    utterance.onend = () => {
+      if (options.resumeCall && state.voice.callOpen && !state.voice.micMuted) {
+        window.setTimeout(() => {
+          startVoiceCapture('call');
+        }, 250);
+      }
+      resolve();
+    };
+    utterance.onerror = () => resolve();
+    window.speechSynthesis.speak(utterance);
+  });
+}
+
+function createRecognitionInstance(purpose) {
+  const SpeechRecognitionCtor = getSpeechRecognitionConstructor();
+  if (!SpeechRecognitionCtor) {
+    throw new Error('Speech recognition is not supported in this browser.');
+  }
+
+  const recognition = new SpeechRecognitionCtor();
+  recognition.lang = 'en-US';
+  recognition.interimResults = true;
+  recognition.continuous = purpose === 'call';
+
+  recognition.onstart = () => {
+    state.voice.recognitionActive = true;
+    state.voice.recognitionPurpose = purpose;
+    setVoiceStatus('Listening', purpose === 'call' ? 'Voice call is listening for your next message.' : 'Speak clearly and Nova will transcribe your words.');
+    renderControls();
+  };
+
+  recognition.onresult = (event) => {
+    let transcript = '';
+    for (let index = event.resultIndex; index < event.results.length; index += 1) {
+      transcript += event.results[index][0].transcript;
+    }
+    const cleanTranscript = transcript.trim();
+    if (!cleanTranscript) return;
+
+    if (purpose === 'call') {
+      state.voice.userCaption = cleanTranscript;
+    } else {
+      els.input.value = cleanTranscript;
+      resizeComposer();
+    }
+
+    const finalResult = event.results[event.results.length - 1];
+    if (finalResult?.isFinal) {
+      if (purpose === 'call') {
+        stopRecognition();
+        sendMessage(cleanTranscript, { fromVoiceCall: true });
+      } else {
+        setVoiceStatus('Ready', 'Transcript added to the message box. You can edit it before sending.');
+      }
+      renderControls();
+    }
+  };
+
+  recognition.onerror = (event) => {
+    state.voice.recognitionActive = false;
+    const message =
+      event.error === 'not-allowed'
+        ? 'Microphone permission was denied.'
+        : event.error === 'no-speech'
+          ? 'No speech was detected.'
+          : 'Voice capture failed.';
+    setVoiceStatus('Error', message);
+    showToast('Voice error', message, 'error');
+    renderControls();
+  };
+
+  recognition.onend = () => {
+    state.voice.recognitionActive = false;
+    if (purpose !== 'call') {
+      renderControls();
+    }
+  };
+
+  return recognition;
+}
+
+function startVoiceCapture(purpose = 'composer') {
+  if (!state.account) {
+    showToast('Sign in required', 'Sign in before using voice tools.', 'error');
+    return;
+  }
+  if (state.voice.recognitionActive) {
+    stopRecognition();
+    setVoiceStatus('Ready', 'Voice capture stopped.');
+    renderControls();
+    return;
+  }
+  if (purpose === 'call' && state.voice.micMuted) {
+    setVoiceStatus('Ready', 'Unmute your microphone to keep talking.');
+    renderControls();
+    return;
+  }
+
+  try {
+    state.voice.recognition = createRecognitionInstance(purpose);
+    setVoiceStatus('Processing', 'Preparing your microphone.');
+    state.voice.recognition.start();
+  } catch (error) {
+    setVoiceStatus('Error', error.message || 'Voice capture is unavailable.');
+    showToast('Voice unavailable', error.message || 'Voice capture is unavailable.', 'error');
+    renderControls();
+  }
+}
+
 async function sendToBackend(message, history) {
   if (STATIC_EXPORT) {
     return {
       reply:
-        'This GitHub Pages build is a static preview of ForgeAI Nova. Run the full Node backend locally or deploy the server to use Groq, Ollama fallback, API token billing, memory sync, and live AI chat.',
+        'This GitHub Pages build is a static preview of ForgeAI Nova. Run the full Node backend locally or deploy the server to use Groq, Ollama fallback, memory sync, and full AI chat.',
       provider: 'error',
       modelUsed: null,
       webUsed: false,
@@ -1139,10 +1534,52 @@ async function sendToBackend(message, history) {
       history,
       modelMode: state.settings.modelMode,
       providerMode: state.settings.providerMode,
-      webMode: state.settings.webMode,
+      assistantMode: state.settings.assistantMode,
+      localModelPreference: state.settings.localModelPreference,
       account: state.account,
     }),
   });
+}
+
+async function refreshModelInventory() {
+  if (STATIC_EXPORT || !state.account || !isOwnerAccount()) return;
+  try {
+    const query = new URLSearchParams({
+      accountId: state.account.id,
+      name: state.account.name,
+      email: state.account.email,
+      kind: state.account.kind,
+    });
+    const data = await fetchJSON(`/api/admin/models?${query.toString()}`);
+    state.modelInventory = data.inventory || null;
+    renderAll();
+  } catch (error) {
+    showToast('Model check failed', error.message, 'error');
+  }
+}
+
+async function handleModelAction(actionKey) {
+  if (!state.account || !isOwnerAccount()) {
+    showToast('Admin only', 'Only the owner account can manage local models.', 'error');
+    return;
+  }
+
+  try {
+    const data = await fetchJSON('/api/admin/models/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        actionKey,
+        account: state.account,
+      }),
+    });
+    state.modelInventory = data.inventory || state.modelInventory;
+    renderAll();
+    const message = data.output?.reply || data.output?.label || 'Local model action finished.';
+    showToast('Model action complete', message);
+  } catch (error) {
+    showToast('Model action failed', error.message, 'error');
+  }
 }
 
 async function sendMessage(message, options = {}) {
@@ -1166,7 +1603,12 @@ async function sendMessage(message, options = {}) {
   }
 
   setSending(true);
-  setStatus(`Nova is thinking... about ${estimatedCost} tokens`);
+  setStatus(`Nova is thinking... about ${estimatedCost} tokens in ${ASSISTANT_MODE_LABELS[state.settings.assistantMode]}.`);
+  if (options.fromVoiceCall) {
+    state.voice.aiCaption = 'Nova is thinking...';
+    setVoiceStatus('Processing', 'Nova is preparing a spoken reply.');
+    renderControls();
+  }
 
   let assistantMessage;
 
@@ -1221,6 +1663,12 @@ async function sendMessage(message, options = {}) {
         ? `${providerLabel} answered. ${result.usageCost} tokens used.`
         : `${providerLabel} answered.`
     );
+    if (options.fromVoiceCall) {
+      state.voice.aiCaption = result.reply;
+      setVoiceStatus('Ready', `${providerLabel} answered. Spoken reply is playing.`);
+      renderControls();
+      await speakReply(result.reply, { resumeCall: true });
+    }
 
     renderAll();
     if (result.error) {
@@ -1242,6 +1690,10 @@ async function sendMessage(message, options = {}) {
     conversation.updatedAt = new Date().toISOString();
     persistAccountState();
     setStatus('Answer failed. See the latest message.');
+    if (options.fromVoiceCall) {
+      state.voice.aiCaption = assistantMessage.content;
+      setVoiceStatus('Error', assistantMessage.content);
+    }
     renderAll();
     showToast('Request failed', error.message || 'Something went wrong.', 'error');
   } finally {
@@ -1341,6 +1793,8 @@ function bindEvents() {
   els.thread.addEventListener('click', async (event) => {
     const startChat = event.target.closest('[data-start-chat]');
     const openSettingsInline = event.target.closest('[data-open-settings-inline]');
+    const openVoiceCallInline = event.target.closest('[data-open-voice-call-inline]');
+    const modeCard = event.target.closest('[data-assistant-mode-card]');
     const copyButton = event.target.closest('[data-copy-message]');
     const regenerateButton = event.target.closest('[data-regenerate-message]');
 
@@ -1351,6 +1805,20 @@ function bindEvents() {
 
     if (openSettingsInline) {
       openSettings('ai');
+      return;
+    }
+
+    if (openVoiceCallInline) {
+      openVoiceCall();
+      return;
+    }
+
+    if (modeCard) {
+      state.settings.assistantMode = normalizeAssistantMode(modeCard.dataset.assistantModeCard);
+      persistAccountState();
+      renderControls();
+      focusComposer();
+      showToast('Mode updated', `${ASSISTANT_MODE_LABELS[state.settings.assistantMode]} is active.`);
       return;
     }
 
@@ -1369,7 +1837,9 @@ function bindEvents() {
 
     if (regenerateButton) {
       await regenerateMessage(regenerateButton.dataset.regenerateMessage);
+      return;
     }
+
   });
 
   els.openSidebarButtons.forEach((button) => {
@@ -1410,6 +1880,27 @@ function bindEvents() {
     showToast('Provider updated', 'AI provider mode changed.');
   });
 
+  els.modelPreference?.addEventListener('change', () => {
+    state.settings.localModelPreference = normalizeLocalModelPreference(els.modelPreference.value);
+    persistAccountState();
+    renderControls();
+    showToast('Model updated', `Selected ${els.modelPreference.options[els.modelPreference.selectedIndex].text}.`);
+  });
+
+  els.modelPreferenceToolbar?.addEventListener('change', () => {
+    state.settings.localModelPreference = normalizeLocalModelPreference(els.modelPreferenceToolbar.value);
+    persistAccountState();
+    renderControls();
+    showToast('Model updated', `Selected ${els.modelPreferenceToolbar.options[els.modelPreferenceToolbar.selectedIndex].text}.`);
+  });
+
+  els.assistantMode?.addEventListener('change', () => {
+    state.settings.assistantMode = normalizeAssistantMode(els.assistantMode.value);
+    persistAccountState();
+    renderControls();
+    showToast('Assistant mode updated', `${ASSISTANT_MODE_LABELS[state.settings.assistantMode]} is active.`);
+  });
+
   els.modelButtons.forEach((button) => {
     button.addEventListener('click', () => {
       state.settings.modelMode = button.dataset.modelMode;
@@ -1419,11 +1910,18 @@ function bindEvents() {
     });
   });
 
-  els.webToggle.addEventListener('change', () => {
-    state.settings.webMode = els.webToggle.checked;
+  els.voiceStyle?.addEventListener('change', () => {
+    state.settings.voiceStyle = normalizeVoiceStyle(els.voiceStyle.value);
     persistAccountState();
     renderControls();
-    showToast('Web mode updated', state.settings.webMode ? 'Live web search is on.' : 'Live web search is off.');
+    showToast('Voice updated', `${VOICE_STYLE_LABELS[state.settings.voiceStyle]} voice selected.`);
+  });
+
+  els.voiceStyleToolbar?.addEventListener('change', () => {
+    state.settings.voiceStyle = normalizeVoiceStyle(els.voiceStyleToolbar.value);
+    persistAccountState();
+    renderControls();
+    showToast('Voice updated', `${VOICE_STYLE_LABELS[state.settings.voiceStyle]} voice selected.`);
   });
 
   els.createApiKeyButton.addEventListener('click', async () => {
@@ -1434,8 +1932,73 @@ function bindEvents() {
     }
   });
 
-  els.openBillingTabButton?.addEventListener('click', () => {
-    openSettings('billing');
+  els.openSupportTabButton?.addEventListener('click', () => {
+    openSettings('donations');
+  });
+
+  els.checkModelsButton?.addEventListener('click', async () => {
+    await refreshModelInventory();
+    showToast('Models refreshed', 'Local model status has been updated.');
+  });
+
+  els.modelsGrid?.addEventListener('click', async (event) => {
+    const copyCommandButton = event.target.closest('[data-copy-command]');
+    const modelActionButton = event.target.closest('[data-model-action]');
+
+    if (copyCommandButton) {
+      try {
+        await copyText(copyCommandButton.dataset.copyCommand || '');
+        showToast('Command copied', 'PowerShell command copied to your clipboard.');
+      } catch {
+        showToast('Copy failed', 'Clipboard access was blocked.', 'error');
+      }
+      return;
+    }
+
+    if (modelActionButton) {
+      await handleModelAction(modelActionButton.dataset.modelAction);
+    }
+  });
+
+  els.micToggleButton?.addEventListener('click', () => {
+    startVoiceCapture('composer');
+  });
+
+  els.openVoiceCallButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      openVoiceCall();
+    });
+  });
+
+  els.closeVoiceCallButton?.addEventListener('click', () => {
+    stopRecognition();
+    closeVoiceCall();
+    setVoiceStatus('Ready', 'Voice call closed.');
+  });
+
+  els.voiceListenButton?.addEventListener('click', () => {
+    startVoiceCapture('call');
+  });
+
+  els.voiceMuteButton?.addEventListener('click', () => {
+    state.voice.micMuted = !state.voice.micMuted;
+    if (state.voice.micMuted) {
+      stopRecognition();
+      setVoiceStatus('Ready', 'Microphone muted for the current call.');
+    } else {
+      setVoiceStatus('Ready', 'Microphone unmuted. Start listening when ready.');
+    }
+    renderControls();
+  });
+
+  els.voiceStopButton?.addEventListener('click', () => {
+    stopRecognition();
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    closeVoiceCall();
+    setVoiceStatus('Ready', 'Voice call ended.');
+    renderControls();
   });
 
   els.memoryProfileForm.addEventListener('submit', async (event) => {
@@ -1468,8 +2031,10 @@ function bindEvents() {
 
   window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
+      stopRecognition();
       closeSidebar();
       closeSettings();
+      closeVoiceCall();
     }
   });
 }
@@ -1489,6 +2054,7 @@ async function init() {
     try {
       await refreshAccountFromServer();
       await Promise.all([refreshMemory(), refreshApiKeys()]);
+      await refreshModelInventory();
       setAuthLocked(false);
       setStatus('Welcome back.');
     } catch (error) {

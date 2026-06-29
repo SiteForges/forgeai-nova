@@ -6,7 +6,7 @@
     <title>ForgeAI Nova</title>
     <meta
       name="description"
-      content="ForgeAI Nova is a clean AI workspace with Groq, Ollama fallback, local chat history, account memory, and a settings hub for billing and API access."
+      content="ForgeAI Nova is a clean AI workspace with Groq, Ollama fallback, local chat history, account memory, and a settings hub for support and API access."
     />
     <link rel="stylesheet" href="style.css" />
   </head>
@@ -94,7 +94,10 @@
             <div class="account-line">
               <span class="account-avatar" data-account-avatar>F</span>
               <div>
-                <strong data-account-name>Not signed in</strong>
+                <div class="account-heading">
+                  <strong data-account-name>Not signed in</strong>
+                  <span class="plan-badge" data-account-badge hidden>PRO AI</span>
+                </div>
                 <span data-account-email>Choose an account to start.</span>
               </div>
             </div>
@@ -102,7 +105,7 @@
             <div class="usage-block">
               <div class="usage-row">
                 <span>Usage</span>
-                <strong data-usage-text>200 / 200 tokens</strong>
+                <strong data-usage-text>1000 / 1000 tokens</strong>
               </div>
               <div class="usage-track" aria-hidden="true">
                 <div class="usage-fill" data-usage-fill></div>
@@ -137,15 +140,62 @@
 
           <div class="topbar-right">
             <div class="provider-badge" data-provider-badge>Waiting</div>
+            <button class="secondary-button compact" type="button" data-open-voice-call>Voice Call</button>
             <button class="secondary-button compact" type="button" data-open-settings>Settings</button>
           </div>
         </header>
 
         <section class="chat-stage">
+          <div class="workspace-toolbar">
+            <div class="mode-strip">
+              <button class="mode-card active" type="button" data-assistant-mode-card="general">
+                <strong>General Chat</strong>
+                <span>Everyday AI conversation</span>
+              </button>
+              <button class="mode-card" type="button" data-assistant-mode-card="email">
+                <strong>Email Writer</strong>
+                <span>Write, shorten, and professionalize emails</span>
+              </button>
+              <button class="mode-card" type="button" data-assistant-mode-card="code">
+                <strong>Code Helper</strong>
+                <span>Debug, edit, and explain code</span>
+              </button>
+              <button class="mode-card" type="button" data-assistant-mode-card="prompt">
+                <strong>Prompt Builder</strong>
+                <span>Generate strong prompts for apps and AI tools</span>
+              </button>
+            </div>
+
+            <div class="toolbar-selectors">
+              <label class="toolbar-field">
+                <span>Model</span>
+                <select data-model-preference-toolbar>
+                  <option value="default">Auto / Best Available</option>
+                  <option value="qwen36">Qwen3.6 27B</option>
+                  <option value="fallback">Qwen3 4B</option>
+                  <option value="gemma4">Gemma4</option>
+                  <option value="gemma3">Gemma3 4B</option>
+                </select>
+              </label>
+              <label class="toolbar-field">
+                <span>Voice</span>
+                <select data-voice-style-toolbar>
+                  <option value="calm">Calm</option>
+                  <option value="professional">Professional</option>
+                  <option value="friendly">Friendly</option>
+                  <option value="deep">Deep</option>
+                  <option value="fast">Fast</option>
+                  <option value="slow">Slow</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
           <div class="thread" data-thread></div>
 
           <div class="composer-shell">
             <div class="status-line" data-status>Ready when you are.</div>
+            <div class="voice-status-line" data-voice-status-line>Voice: Ready</div>
 
             <form class="composer" data-composer>
               <textarea
@@ -154,16 +204,25 @@
                 placeholder="Message Nova"
                 aria-label="Message Nova"
               ></textarea>
-              <button class="send-button" type="submit" data-send-button>
-                <svg viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M5 12L19 5L15.5 19L11.5 13.5L5 12Z"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-              </button>
+              <div class="composer-actions">
+                <button class="icon-button composer-tool" type="button" data-mic-toggle aria-label="Use microphone">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M12 15.5A3.5 3.5 0 0 0 15.5 12V7.5A3.5 3.5 0 1 0 8.5 7.5V12A3.5 3.5 0 0 0 12 15.5Z" stroke="currentColor" stroke-width="1.8" />
+                    <path d="M5.5 11.5A6.5 6.5 0 0 0 18.5 11.5M12 18V21M8.5 21H15.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                  </svg>
+                </button>
+                <button class="secondary-button compact" type="button" data-open-voice-call>Voice Call</button>
+                <button class="send-button" type="submit" data-send-button>
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M5 12L19 5L15.5 19L11.5 13.5L5 12Z"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </button>
+              </div>
             </form>
 
             <div class="composer-footer">
@@ -195,7 +254,7 @@
             <button class="settings-tab" type="button" data-settings-tab="ai">AI</button>
             <button class="settings-tab" type="button" data-settings-tab="api">API</button>
             <button class="settings-tab" type="button" data-settings-tab="memory">Memory</button>
-            <button class="settings-tab" type="button" data-settings-tab="billing">Billing</button>
+            <button class="settings-tab" type="button" data-settings-tab="donations">Donations</button>
           </nav>
 
           <div class="settings-content">
@@ -218,7 +277,28 @@
                   </div>
                   <div>
                     <span class="detail-label">Usage</span>
-                    <strong data-settings-usage>200 / 200 tokens</strong>
+                    <strong data-settings-usage>1000 / 1000 tokens</strong>
+                  </div>
+                </div>
+                <div class="settings-subcard">
+                  <h4>Support</h4>
+                  <div class="details-grid">
+                    <div>
+                      <span class="detail-label">Owner / Creator</span>
+                      <strong>ALEXADNER BATTI</strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Email</span>
+                      <strong><a href="mailto:thisisalexadnerbatti@gmail.com">thisisalexadnerbatti@gmail.com</a></strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Phone</span>
+                      <strong><a href="tel:6198758774">619-875-8774</a></strong>
+                    </div>
+                    <div>
+                      <span class="detail-label">Support note</span>
+                      <strong>For help or account issues, contact the owner directly.</strong>
+                    </div>
                   </div>
                 </div>
                 <div class="inline-actions">
@@ -231,7 +311,7 @@
             <section class="settings-section" data-settings-section="ai">
               <div class="settings-card">
                 <h3>AI controls</h3>
-                <p class="muted-copy">Choose how Nova answers and when live web search is used.</p>
+                <p class="muted-copy">Choose how Nova answers and manage your local Ollama models.</p>
 
                 <div class="control-stack">
                   <label class="field">
@@ -240,6 +320,30 @@
                       <option value="auto">Auto mode: Groq first, Ollama fallback</option>
                       <option value="groq">Groq only</option>
                       <option value="ollama">Ollama only</option>
+                    </select>
+                  </label>
+
+                  <label class="field">
+                    <span>Model selector</span>
+                    <select data-model-preference>
+                      <option value="default">Auto / Best Available</option>
+                      <option value="qwen36">Qwen3.6 27B</option>
+                      <option value="fallback">Qwen3 4B</option>
+                      <option value="gemma4">Gemma4</option>
+                      <option value="gemma3">Gemma3 4B</option>
+                    </select>
+                    <small class="field-help" data-model-help>
+                      Auto mode uses Groq first, then your best local Ollama model.
+                    </small>
+                  </label>
+
+                  <label class="field">
+                    <span>Assistant mode</span>
+                    <select data-assistant-mode>
+                      <option value="general">General Chat</option>
+                      <option value="email">Write Email</option>
+                      <option value="code">Code Helper</option>
+                      <option value="prompt">Prompt Builder</option>
                     </select>
                   </label>
 
@@ -252,13 +356,34 @@
                     </div>
                   </div>
 
-                  <label class="toggle-row">
-                    <span>
-                      <strong>Web mode</strong>
-                      <small>Use Tavily search first for live topics like news, prices, and weather.</small>
-                    </span>
-                    <input type="checkbox" data-web-toggle />
+                  <label class="field">
+                    <span>AI voice</span>
+                    <select data-voice-style>
+                      <option value="calm">Calm</option>
+                      <option value="professional">Professional</option>
+                      <option value="friendly">Friendly</option>
+                      <option value="deep">Deep</option>
+                      <option value="fast">Fast</option>
+                      <option value="slow">Slow</option>
+                    </select>
+                    <small class="field-help">
+                      Voice replies and live voice chat use browser speech features after microphone permission is granted.
+                    </small>
                   </label>
+                </div>
+
+                <div class="settings-subcard" data-local-models-panel hidden>
+                  <div class="subcard-header">
+                    <div>
+                      <h4>Download Local Models</h4>
+                      <p class="muted-copy">Admin only. Use the safe buttons below or copy the PowerShell command if Ollama cannot be controlled from the app.</p>
+                    </div>
+                    <button class="secondary-button compact" type="button" data-check-models>Check Installed Models</button>
+                  </div>
+                  <p class="muted-copy" data-models-setup-message>
+                    To use local AI models, install Ollama first. Then open PowerShell and run the model download command. After the download finishes, refresh this page and click Check Installed Models.
+                  </p>
+                  <div class="models-grid" data-models-grid></div>
                 </div>
               </div>
             </section>
@@ -266,7 +391,7 @@
             <section class="settings-section" data-settings-section="api">
               <div class="settings-card">
                 <h3>API access</h3>
-                <p class="muted-copy">Create a private ForgeAI API key tied to your API wallet. Every account starts with 100 API tokens.</p>
+                <p class="muted-copy">Create a private ForgeAI API key for your account. Every account starts with 100 API tokens.</p>
                 <div class="api-hero" data-api-hero></div>
                 <div class="details-grid api-health-grid">
                   <div>
@@ -278,13 +403,13 @@
                     <strong data-health-ollama>Checking...</strong>
                   </div>
                   <div>
-                    <span class="detail-label">Web search</span>
-                    <strong data-health-tavily>Checking...</strong>
+                    <span class="detail-label">Local models</span>
+                    <strong data-health-local-models>Checking...</strong>
                   </div>
                 </div>
                 <div class="inline-actions api-actions-row">
                   <button class="primary-button compact" type="button" data-create-api-key>Create API key</button>
-                  <button class="secondary-button compact" type="button" data-open-billing-tab>Buy API tokens</button>
+                  <button class="secondary-button compact" type="button" data-open-billing-tab>Open Donations</button>
                 </div>
                 <div class="api-key-output" data-api-key-output hidden></div>
                 <div class="list-shell" data-api-key-list></div>
@@ -330,30 +455,29 @@
               </div>
             </section>
 
-            <section class="settings-section" data-settings-section="billing">
+            <section class="settings-section" data-settings-section="donations">
               <div class="settings-card">
-                <h3>Billing</h3>
+                <h3>Donations</h3>
                 <p class="muted-copy">
-                  Free accounts renew 200 chat tokens every 2 days. Pro accounts renew 1000 chat tokens every 2 days after manual verification. API token packs below fund the ForgeAI API wallet separately.
+                  ForgeAI is free to use. Donations simply help support hosting, development, and ongoing maintenance.
                 </p>
                 <div class="billing-overview" data-billing-overview></div>
 
                 <div class="billing-card">
                   <div>
-                    <span class="detail-label">AI Pro</span>
-                    <strong>$14 one-time purchase</strong>
-                    <p>After payment is manually verified, the account is upgraded to Pro.</p>
+                    <span class="detail-label">Support ForgeAI</span>
+                    <strong>Optional donations</strong>
+                    <p>All features remain free. Donations are voluntary and do not unlock special access.</p>
                   </div>
                   <a class="primary-button compact" href="https://paypal.me/AlexanderBatti/14" target="_blank" rel="noreferrer">
-                    Pay with PayPal
+                    Donate with PayPal
                   </a>
                 </div>
 
                 <div class="billing-note">
-                  <strong>API token packs</strong>
-                  <p>Pick a pack, complete PayPal, then the purchased credits can be applied to your ForgeAI API wallet after payment verification.</p>
+                  <strong>Free access</strong>
+                  <p>There are no paid plans or purchase requirements. Everyone gets the same full experience.</p>
                 </div>
-                <div class="pack-grid" data-pack-grid></div>
               </div>
             </section>
           </div>
@@ -362,6 +486,45 @@
     </div>
 
     <div class="toast-stack" data-toast-stack aria-live="polite" aria-atomic="true"></div>
+
+    <div class="voice-overlay" data-voice-overlay hidden>
+      <div class="voice-panel">
+        <div class="voice-panel-header">
+          <div>
+            <p>Voice call</p>
+            <h3>Talk with Nova live</h3>
+          </div>
+          <button class="icon-button" type="button" data-close-voice-call aria-label="Close voice call">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M6 6L18 18M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="voice-state-card">
+          <span class="detail-label">Call state</span>
+          <strong data-voice-call-state>Ready</strong>
+          <p data-voice-call-help>Start listening when you want to speak. Nova will answer with spoken audio and live captions.</p>
+        </div>
+
+        <div class="voice-call-actions">
+          <button class="primary-button compact" type="button" data-voice-listen>Start listening</button>
+          <button class="secondary-button compact" type="button" data-voice-mute>Mute mic</button>
+          <button class="secondary-button compact" type="button" data-voice-stop>End call</button>
+        </div>
+
+        <div class="voice-caption-grid">
+          <div class="voice-caption-card">
+            <span class="detail-label">You said</span>
+            <p data-voice-user-caption>Waiting for your microphone.</p>
+          </div>
+          <div class="voice-caption-card">
+            <span class="detail-label">Nova replied</span>
+            <p data-voice-ai-caption>Spoken replies will appear here.</p>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <svg class="sr-only" aria-hidden="true">
       <symbol id="icon-copy" viewBox="0 0 24 24">
