@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ForgeAI Nova</title>
+    <meta
+      name="description"
+      content="ForgeAI Nova is a clean AI workspace with Groq, Ollama fallback, local chat history, account memory, and a settings hub for billing and API access."
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="auth-overlay" data-auth-overlay>
+      <div class="auth-card">
+        <div class="auth-logo">
+          <span class="logo-mark" aria-hidden="true">
+            <img src="assets/forgeai-logo.png" alt="" />
+          </span>
+          <div>
+            <p>ForgeAI</p>
+            <h1>Meet Nova</h1>
+          </div>
+        </div>
+
+        <p class="auth-copy">
+          Sign in with your name and email to keep your own chat history, usage balance, API keys, and saved memory.
+        </p>
+
+        <form class="auth-form" data-auth-form>
+          <label class="field">
+            <span>Name</span>
+            <input type="text" data-auth-name placeholder="Your name" autocomplete="name" required />
+          </label>
+
+          <label class="field">
+            <span>Email</span>
+            <input type="email" data-auth-email placeholder="you@example.com" autocomplete="email" required />
+          </label>
+
+          <div class="auth-actions">
+            <button type="submit" class="primary-button">Continue</button>
+            <button type="button" class="secondary-button" data-auth-guest>Continue as guest</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="app-shell">
+      <aside class="sidebar" data-sidebar>
+        <div class="sidebar-top">
+          <div class="brand">
+            <span class="logo-mark" aria-hidden="true">
+              <img src="assets/forgeai-logo.png" alt="" />
+            </span>
+            <div>
+              <strong>ForgeAI</strong>
+              <span>Nova workspace</span>
+            </div>
+          </div>
+
+          <button class="icon-button mobile-only" type="button" data-close-sidebar aria-label="Close sidebar">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M6 6L18 18M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <button class="new-chat-button" type="button" data-new-chat>
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M12 5V19M5 12H19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+          </svg>
+          New chat
+        </button>
+
+        <label class="search-box">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M11 18A7 7 0 1 0 11 4A7 7 0 0 0 11 18Z" stroke="currentColor" stroke-width="1.8" />
+            <path d="M20 20L16.5 16.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+          </svg>
+          <input type="text" data-chat-search placeholder="Search chats" />
+        </label>
+
+        <div class="sidebar-section">
+          <div class="section-row">
+            <p>Chats</p>
+            <button class="text-button danger" type="button" data-clear-chats>Clear all</button>
+          </div>
+          <div class="chat-list" data-chat-list></div>
+        </div>
+
+        <div class="sidebar-footer">
+          <div class="account-card">
+            <div class="account-line">
+              <span class="account-avatar" data-account-avatar>F</span>
+              <div>
+                <strong data-account-name>Not signed in</strong>
+                <span data-account-email>Choose an account to start.</span>
+              </div>
+            </div>
+
+            <div class="usage-block">
+              <div class="usage-row">
+                <span>Usage</span>
+                <strong data-usage-text>200 / 200 tokens</strong>
+              </div>
+              <div class="usage-track" aria-hidden="true">
+                <div class="usage-fill" data-usage-fill></div>
+              </div>
+              <p class="usage-caption" data-usage-caption>Free plan renews every 2 days.</p>
+            </div>
+
+            <div class="sidebar-actions">
+              <button class="secondary-button compact" type="button" data-open-settings>Settings</button>
+              <button class="text-button" type="button" data-switch-account>Switch</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <div class="sidebar-backdrop" data-sidebar-backdrop></div>
+
+      <main class="main-panel">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button class="icon-button mobile-only" type="button" data-open-sidebar aria-label="Open sidebar">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M4 6H20M4 12H20M4 18H20" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+              </svg>
+            </button>
+
+            <div class="title-block">
+              <span>ForgeAI Nova</span>
+              <h1 data-active-title>New chat</h1>
+            </div>
+          </div>
+
+          <div class="topbar-right">
+            <div class="provider-badge" data-provider-badge>Waiting</div>
+            <button class="secondary-button compact" type="button" data-open-settings>Settings</button>
+          </div>
+        </header>
+
+        <section class="chat-stage">
+          <div class="thread" data-thread></div>
+
+          <div class="composer-shell">
+            <div class="status-line" data-status>Ready when you are.</div>
+
+            <form class="composer" data-composer>
+              <textarea
+                data-input
+                rows="1"
+                placeholder="Message Nova"
+                aria-label="Message Nova"
+              ></textarea>
+              <button class="send-button" type="submit" data-send-button>
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M5 12L19 5L15.5 19L11.5 13.5L5 12Z"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
+            </form>
+
+            <div class="composer-footer">
+              <span>Enter to send. Shift + Enter for a new line.</span>
+              <span>AI can make mistakes. Check important information.</span>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="settings-overlay" data-settings-overlay hidden>
+      <div class="settings-panel">
+        <div class="settings-header">
+          <div>
+            <p>Workspace settings</p>
+            <h2>Manage your Nova account</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-settings aria-label="Close settings">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M6 6L18 18M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="settings-layout">
+          <nav class="settings-nav" aria-label="Settings sections">
+            <button class="settings-tab active" type="button" data-settings-tab="account">Account</button>
+            <button class="settings-tab" type="button" data-settings-tab="ai">AI</button>
+            <button class="settings-tab" type="button" data-settings-tab="api">API</button>
+            <button class="settings-tab" type="button" data-settings-tab="memory">Memory</button>
+            <button class="settings-tab" type="button" data-settings-tab="billing">Billing</button>
+          </nav>
+
+          <div class="settings-content">
+            <section class="settings-section active" data-settings-section="account">
+              <div class="settings-card">
+                <h3>Account</h3>
+                <p class="muted-copy">Your chats stay local to this device and this account.</p>
+                <div class="details-grid">
+                  <div>
+                    <span class="detail-label">Name</span>
+                    <strong data-settings-name>Not signed in</strong>
+                  </div>
+                  <div>
+                    <span class="detail-label">Email</span>
+                    <strong data-settings-email>Not signed in</strong>
+                  </div>
+                  <div>
+                    <span class="detail-label">Plan</span>
+                    <strong data-settings-plan>Free</strong>
+                  </div>
+                  <div>
+                    <span class="detail-label">Usage</span>
+                    <strong data-settings-usage>200 / 200 tokens</strong>
+                  </div>
+                </div>
+                <div class="inline-actions">
+                  <button class="secondary-button compact" type="button" data-switch-account>Switch account</button>
+                  <button class="text-button danger" type="button" data-sign-out>Sign out</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-section" data-settings-section="ai">
+              <div class="settings-card">
+                <h3>AI controls</h3>
+                <p class="muted-copy">Choose how Nova answers and when live web search is used.</p>
+
+                <div class="control-stack">
+                  <label class="field">
+                    <span>Provider mode</span>
+                    <select data-provider-mode>
+                      <option value="auto">Auto mode: Groq first, Ollama fallback</option>
+                      <option value="groq">Groq only</option>
+                      <option value="ollama">Ollama only</option>
+                    </select>
+                  </label>
+
+                  <div>
+                    <span class="field-label">Intelligence level</span>
+                    <div class="pill-group">
+                      <button type="button" class="pill-button" data-model-mode="fast">Low</button>
+                      <button type="button" class="pill-button" data-model-mode="smart">Balanced</button>
+                      <button type="button" class="pill-button" data-model-mode="creative">High</button>
+                    </div>
+                  </div>
+
+                  <label class="toggle-row">
+                    <span>
+                      <strong>Web mode</strong>
+                      <small>Use Tavily search first for live topics like news, prices, and weather.</small>
+                    </span>
+                    <input type="checkbox" data-web-toggle />
+                  </label>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-section" data-settings-section="api">
+              <div class="settings-card">
+                <h3>API access</h3>
+                <p class="muted-copy">Create a private ForgeAI API key tied to your account balance.</p>
+                <div class="details-grid api-health-grid">
+                  <div>
+                    <span class="detail-label">Groq</span>
+                    <strong data-health-groq>Checking...</strong>
+                  </div>
+                  <div>
+                    <span class="detail-label">Ollama</span>
+                    <strong data-health-ollama>Checking...</strong>
+                  </div>
+                  <div>
+                    <span class="detail-label">Web search</span>
+                    <strong data-health-tavily>Checking...</strong>
+                  </div>
+                </div>
+                <div class="inline-actions">
+                  <button class="primary-button compact" type="button" data-create-api-key>Create API key</button>
+                </div>
+                <div class="api-key-output" data-api-key-output hidden></div>
+                <div class="list-shell" data-api-key-list></div>
+              </div>
+            </section>
+
+            <section class="settings-section" data-settings-section="memory">
+              <div class="settings-card">
+                <h3>Memory</h3>
+                <p class="muted-copy">Nova can remember profile details and notes for this account.</p>
+
+                <form class="memory-profile-form" data-memory-profile-form>
+                  <div class="details-grid">
+                    <label class="field">
+                      <span>Name</span>
+                      <input type="text" data-memory-name placeholder="Saved name" />
+                    </label>
+                    <label class="field">
+                      <span>Job</span>
+                      <input type="text" data-memory-job placeholder="Saved job" />
+                    </label>
+                    <label class="field">
+                      <span>Location</span>
+                      <input type="text" data-memory-location placeholder="Saved location" />
+                    </label>
+                  </div>
+                  <div class="inline-actions">
+                    <button class="primary-button compact" type="submit">Save profile memory</button>
+                  </div>
+                </form>
+
+                <form class="memory-note-form" data-memory-note-form>
+                  <label class="field">
+                    <span>Add memory note</span>
+                    <textarea rows="3" data-memory-note placeholder="Example: Remember that I prefer concise answers."></textarea>
+                  </label>
+                  <div class="inline-actions">
+                    <button class="secondary-button compact" type="submit">Save note</button>
+                  </div>
+                </form>
+
+                <div class="list-shell" data-memory-list></div>
+              </div>
+            </section>
+
+            <section class="settings-section" data-settings-section="billing">
+              <div class="settings-card">
+                <h3>Billing</h3>
+                <p class="muted-copy">
+                  Free accounts renew 200 tokens every 2 days. Pro accounts renew 1000 tokens every 2 days after manual verification.
+                </p>
+
+                <div class="billing-card">
+                  <div>
+                    <span class="detail-label">AI Pro</span>
+                    <strong>$14 one-time purchase</strong>
+                    <p>After payment is manually verified, the account is upgraded to Pro.</p>
+                  </div>
+                  <a class="primary-button compact" href="https://paypal.me/AlexanderBatti/14" target="_blank" rel="noreferrer">
+                    Pay with PayPal
+                  </a>
+                </div>
+
+                <div class="pack-grid" data-pack-grid></div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast-stack" data-toast-stack aria-live="polite" aria-atomic="true"></div>
+
+    <svg class="sr-only" aria-hidden="true">
+      <symbol id="icon-copy" viewBox="0 0 24 24">
+        <path
+          d="M9 9.5V7.25C9 6.01 10.01 5 11.25 5h5.5C17.99 5 19 6.01 19 7.25v5.5C19 13.99 17.99 15 16.75 15H14.5"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.75"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <path
+          d="M7.25 9H12.75C13.99 9 15 10.01 15 11.25V16.75C15 17.99 13.99 19 12.75 19H7.25C6.01 19 5 17.99 5 16.75V11.25C5 10.01 6.01 9 7.25 9Z"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.75"
+        />
+      </symbol>
+      <symbol id="icon-refresh" viewBox="0 0 24 24">
+        <path d="M20 12a8 8 0 1 1-2.35-5.65" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
+        <path d="M20 6V10H16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
+      </symbol>
+      <symbol id="icon-trash" viewBox="0 0 24 24">
+        <path d="M4.75 7.5H19.25" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
+        <path d="M9.25 4.75H14.75C15.44 4.75 16 5.31 16 6V7.5H8V6C8 5.31 8.56 4.75 9.25 4.75Z" fill="none" stroke="currentColor" stroke-width="1.75" />
+        <path d="M8.75 10L9.25 18.25C9.31 19.09 9.99 19.75 10.83 19.75H13.17C14.01 19.75 14.69 19.09 14.75 18.25L15.25 10" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
+      </symbol>
+    </svg>
+
+    <script src="app.js"></script>
+  </body>
+</html>

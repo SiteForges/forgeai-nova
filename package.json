@@ -1,0 +1,16 @@
+{
+  "name": "forgeai",
+  "version": "1.0.0",
+  "description": "ForgeAI is a premium AI chat website powered by Groq with optional Tavily live web search.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "groq-sdk": "^1.3.0",
+    "playwright-core": "^1.61.1"
+  }
+}
