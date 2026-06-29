@@ -1183,9 +1183,15 @@ function setActiveConversation(chatId) {
 async function signInAccount(account) {
   setCurrentAccount(account);
   loadAccountWorkspace();
-  await refreshAccountFromServer();
-  await Promise.all([refreshMemory(), refreshApiKeys()]);
-  await refreshModelInventory();
+  try {
+    await refreshAccountFromServer();
+    await Promise.all([refreshMemory(), refreshApiKeys()]);
+    await refreshModelInventory();
+  } catch {
+    // Static Pages builds and offline sessions keep a local-only account.
+    state.memory = normalizeMemory({});
+    state.apiKeys = [];
+  }
   setAuthLocked(false);
   setSending(false);
   setStatus('Signed in and ready.');
