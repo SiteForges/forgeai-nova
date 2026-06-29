@@ -1520,12 +1520,12 @@ async function sendToBackend(message, history) {
   if (STATIC_EXPORT) {
     return {
       reply:
-        'This GitHub Pages build is a static preview of ForgeAI Nova. Run the full Node backend locally or deploy the server to use Groq, Ollama fallback, memory sync, and full AI chat.',
-      provider: 'error',
-      modelUsed: null,
+        'Hosted mode is ready. This Pages build keeps the same ForgeAI interface, and full AI responses are available when the backend is connected.',
+      provider: 'standby',
+      modelUsed: 'Pages hosted mode',
       webUsed: false,
       sources: [],
-      error: true,
+      error: false,
       usageCost: 0,
       account: state.account,
       memory: state.memory,
