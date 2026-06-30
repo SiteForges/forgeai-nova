@@ -241,12 +241,12 @@ function normalizeAccount(account) {
     email: String(account.email || 'user@example.com').trim(),
     plan: resolvedPlan,
     role: account.role === 'owner' ? 'owner' : 'member',
-    isUnlimited: account.isUnlimited === true,
-    tokenLimit: Number.isFinite(account.tokenLimit) ? account.tokenLimit : 200,
+    isUnlimited: account.isUnlimited !== false || resolvedPlan === 'free',
+    tokenLimit: Number.isFinite(account.tokenLimit) ? account.tokenLimit : Number.MAX_SAFE_INTEGER,
     tokensUsed: Number.isFinite(account.tokensUsed) ? account.tokensUsed : 0,
     tokensRemaining: Number.isFinite(account.tokensRemaining)
       ? account.tokensRemaining
-      : Math.max(0, (Number(account.tokenLimit) || 200) - (Number(account.tokensUsed) || 0)),
+      : Number.MAX_SAFE_INTEGER,
     apiTokenLimit: Number.isFinite(account.apiTokenLimit) ? account.apiTokenLimit : 100,
     apiTokensUsed: Number.isFinite(account.apiTokensUsed) ? account.apiTokensUsed : 0,
     apiTokensRemaining: Number.isFinite(account.apiTokensRemaining)
@@ -687,13 +687,13 @@ function renderAccount() {
     els.accountAvatar.textContent = 'F';
     els.accountAvatar.style.background = '#4c7cf7';
     els.accountBadge.hidden = true;
-    els.usageText.textContent = '1000 / 1000 tokens';
+    els.usageText.textContent = 'Unlimited tokens';
     els.usageFill.style.width = '0%';
     els.usageCaption.textContent = 'Free plan renews every 2 days.';
     els.settingsName.textContent = 'Not signed in';
     els.settingsEmail.textContent = 'Not signed in';
     els.settingsPlan.textContent = 'Free';
-    els.settingsUsage.textContent = '1000 / 1000 tokens';
+    els.settingsUsage.textContent = 'Unlimited tokens';
     return;
   }
 
@@ -831,10 +831,10 @@ function renderMemory() {
 function renderTokenPacks() {
   if (els.supportOverview) {
     const chatAllowance = !state.account
-      ? 'Free account: 1000 chat tokens every 2 days.'
+      ? 'Free account: unlimited chat tokens.'
       : state.account.isUnlimited
         ? 'Owner account: unlimited chat and API usage.'
-        : `${getPlanLabel(state.account.plan)} account: ${state.account.tokensRemaining} / ${state.account.tokenLimit} chat tokens remaining.`;
+        : `${getPlanLabel(state.account.plan)} account: unlimited chat tokens.`;
     const donationNote = 'ForgeAI is fully free. Donations help keep the project running but never unlock special features.';
 
     els.supportOverview.innerHTML = `

@@ -136,7 +136,8 @@ function normalizePlan(plan) {
 function getPlanLimit(plan) {
   const normalizedPlan = normalizePlan(plan);
   if (normalizedPlan === 'owner') return Number.MAX_SAFE_INTEGER;
-  return normalizedPlan === 'pro' ? PRO_TOKEN_LIMIT : DEFAULT_TOKEN_LIMIT;
+  if (normalizedPlan === 'pro') return PRO_TOKEN_LIMIT;
+  return Number.MAX_SAFE_INTEGER;
 }
 
 function getApiTokenLimit() {
@@ -348,7 +349,7 @@ function applyBillingCycle(record, now = Date.now()) {
 
   record.plan = plan;
   record.role = 'member';
-  record.isUnlimited = false;
+  record.isUnlimited = plan === 'free';
   record.tokenLimit = limit;
 
   if (!Number.isFinite(record.tokensUsed)) {
@@ -360,8 +361,8 @@ function applyBillingCycle(record, now = Date.now()) {
     record.lastResetAt = new Date(now).toISOString();
   }
 
-  record.tokensRemaining = Math.max(0, limit - record.tokensUsed);
-  record.renewalAt = new Date(Date.parse(record.lastResetAt) + BILLING_INTERVAL_MS).toISOString();
+  record.tokensRemaining = record.isUnlimited ? Number.MAX_SAFE_INTEGER : Math.max(0, limit - record.tokensUsed);
+  record.renewalAt = record.isUnlimited ? null : new Date(Date.parse(record.lastResetAt) + BILLING_INTERVAL_MS).toISOString();
   return record;
 }
 
